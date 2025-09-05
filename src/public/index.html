@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Canvas MCP Service</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #canvas {
+            border: 2px solid #e5e7eb;
+            cursor: crosshair;
+        }
+        
+        .code-input {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .syntax-error {
+            background-color: #fef2f2;
+            border-color: #fca5a5;
+        }
+        
+        .success-feedback {
+            background-color: #f0fdf4;
+            border-color: #86efac;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">🎨 AI Canvas Drawing Service</h1>
+            <p class="text-gray-600">通过 DSL 指令驱动的 Canvas 绘图工具</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Control Panel -->
+            <div class="space-y-6">
+                <!-- Command History -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">📝 Drawing Command History</h2>
+                    
+                    <div class="mb-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="block text-sm font-medium text-gray-700">
+                                Executed Commands:
+                            </label>
+                            <button 
+                                id="clear-history-btn"
+                                class="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                            >
+                                Clear History
+                            </button>
+                        </div>
+                        <div 
+                            id="command-history" 
+                            class="code-input w-full h-64 p-3 border border-gray-300 rounded-md bg-gray-50 overflow-y-auto text-sm"
+                        >
+                            <div class="text-gray-500 text-center py-8">
+                                Waiting for MCP commands...
+                                <br>
+                                <span class="text-xs">Commands will appear here when executed via MCP tools</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Control Buttons -->
+                    <div class="flex flex-wrap gap-3">
+                        <button 
+                            id="clear-canvas-btn"
+                            class="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors"
+                        >
+                            🗑️ Clear Canvas
+                        </button>
+                        
+                        <div class="flex items-center gap-2 text-sm text-gray-600">
+                            <span>Connection Status:</span>
+                            <span id="connection-status" class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-800">
+                                Connecting...
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Panel -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">📊 Status Information</h2>
+                    
+                    <div id="status-panel" class="space-y-3">
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                            <span class="text-sm font-medium text-gray-600">Parse Status:</span>
+                            <span id="parse-status" class="text-sm text-gray-800">Ready</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                            <span class="text-sm font-medium text-gray-600">Commands Executed:</span>
+                            <span id="command-count" class="text-sm text-gray-800">0</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                            <span class="text-sm font-medium text-gray-600">Clickable Areas:</span>
+                            <span id="action-count" class="text-sm text-gray-800">0</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                            <span class="text-sm font-medium text-gray-600">Last Command:</span>
+                            <span id="last-execution" class="text-sm text-gray-800">None</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Error/Success Messages -->
+                    <div id="message-area" class="mt-4 hidden">
+                        <div id="message-content" class="p-3 rounded-md text-sm"></div>
+                    </div>
+                </div>
+
+                <!-- DSL Reference -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">📚 DSL Syntax Reference</h2>
+                    
+                    <div class="text-sm space-y-2">
+                        <div class="grid grid-cols-2 gap-4 font-mono text-xs">
+                            <div>
+                                <strong>Set Style:</strong><br>
+                                <code class="text-blue-600">s(sc:#FF0000;lw:3)</code>
+                            </div>
+                            <div>
+                                <strong>Draw Line:</strong><br>
+                                <code class="text-blue-600">l(10,10;100,100)</code>
+                            </div>
+                            <div>
+                                <strong>Rectangle:</strong><br>
+                                <code class="text-blue-600">r(50,50;100,80)</code>
+                            </div>
+                            <div>
+                                <strong>Filled Rectangle:</strong><br>
+                                <code class="text-blue-600">fr(50,50;100,80)</code>
+                            </div>
+                            <div>
+                                <strong>Circle:</strong><br>
+                                <code class="text-blue-600">c(200,200;50)</code>
+                            </div>
+                            <div>
+                                <strong>Text:</strong><br>
+                                <code class="text-blue-600">t(50,60;Hello!)</code>
+                            </div>
+                            <div>
+                                <strong>Clickable Area:</strong><br>
+                                <code class="text-blue-600">action(x,y;w,h;event)</code>
+                            </div>
+                            <div>
+                                <strong>Clear Canvas:</strong><br>
+                                <code class="text-blue-600">clear()</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas Area -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">🖼️ Drawing Canvas</h2>
+                
+                <div class="flex justify-center">
+                    <canvas 
+                        id="canvas" 
+                        width="600" 
+                        height="400"
+                        class="max-w-full h-auto"
+                    >
+                        Your browser does not support Canvas
+                    </canvas>
+                </div>
+                
+                <!-- Canvas Info -->
+                <div class="mt-4 text-sm text-gray-600 text-center">
+                    Canvas Size: 600 × 400 pixels | Click on interactive areas to trigger events
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-12 text-center text-gray-500 text-sm">
+            <p>Canvas MCP Service - Powered by Bun.js & MCP Protocol</p>
+        </footer>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+</body>
+</html>

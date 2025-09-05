@@ -1,0 +1,23 @@
+{
+  "name": "canvas-sketchpad-mcp",
+  "version": "1.0.0",
+  "description": "AI Canvas Drawing Service with MCP Server",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build:frontend": "bun build ./src/public/main.ts --outdir ./src/public/dist --minify"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "type": "module"
+}
