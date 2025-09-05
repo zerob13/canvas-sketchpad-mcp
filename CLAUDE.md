@@ -6,10 +6,12 @@ Canvas MCP Service is an AI drawing draft service based on MCP (Model Context Pr
 
 ## Technology Stack
 
-- **Runtime**: Bun.js
+- **Runtime**: Node.js
 - **Language**: TypeScript  
 - **Protocol**: MCP (Model Context Protocol)
 - **Transport**: StreamableHTTP
+- **Server**: Express.js
+- **WebSocket**: ws library
 - **Frontend**: Native HTML/CSS/TypeScript + Tailwind CSS
 
 ## Project Structure
@@ -38,13 +40,19 @@ canvas-mcp/
 
 ```bash
 # Development mode (hot reload)
-bun run dev
+npm run dev
+
+# Production build
+npm run build
+
+# Build frontend only
+npm run build:frontend
+
+# Build all (backend + frontend)
+npm run build:all
 
 # Production run
-bun run start  
-
-# Build frontend
-bun run build:frontend
+npm start
 ```
 
 ## Port Configuration

@@ -1,23 +1,26 @@
 import { randomUUID } from "node:crypto";
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
+import * as net from "node:net";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as url from "node:url";
+import express from "express";
+import cors from "cors";
+import { WebSocketServer, WebSocket } from "ws";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
-// Improved port detection using Bun's built-in port availability check
+// Node.js port detection
 async function findAvailablePort(startPort: number = 3100): Promise<number> {
   for (let port = startPort; port < startPort + 100; port++) {
     try {
-      // Use Bun's built-in port availability check
-      const server = Bun.listen({
-        port,
-        hostname: "localhost",
-        socket: {
-          open: () => {},
-          data: () => {},
-          close: () => {}
-        }
+      await new Promise<void>((resolve, reject) => {
+        const server = net.createServer();
+        server.listen(port, 'localhost', () => {
+          server.close(() => resolve());
+        });
+        server.on('error', reject);
       });
-      server.stop();
       return port;
     } catch (error) {
       // Port is in use, continue to next port
@@ -41,7 +44,7 @@ interface CanvasCommand {
 
 interface WebSocketClient {
   id: string;
-  ws: any; // Bun's ServerWebSocket type
+  ws: WebSocket;
   sessionId?: string;
   connectedAt: number;
 }
@@ -89,9 +92,14 @@ class CommandManager {
     // Send to WebSocket clients
     for (const [clientId, client] of this.wsClients) {
       try {
-        client.ws.send(JSON.stringify(message));
-        sentCount++;
-        command.clientIds?.push(clientId);
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify(message));
+          sentCount++;
+          command.clientIds?.push(clientId);
+        } else {
+          // Remove disconnected client
+          this.wsClients.delete(clientId);
+        }
       } catch (error) {
         console.error(`Failed to send command to WebSocket client ${clientId}:`, error);
         // Remove disconnected client
@@ -102,7 +110,7 @@ class CommandManager {
     return sentCount;
   }
 
-  addWebSocketClient(clientId: string, ws: any, sessionId?: string): void {
+  addWebSocketClient(clientId: string, ws: WebSocket, sessionId?: string): void {
     this.wsClients.set(clientId, {
       id: clientId,
       ws,
@@ -301,281 +309,245 @@ function validateDSLCommands(commands: string): { isValid: boolean; errors: stri
   };
 }
 
-const port = await findAvailablePort(3100);
+// Express app setup for non-MCP endpoints
+const expressApp = express();
+expressApp.use(cors());
+expressApp.use(express.json());
 
-console.log(`🎨 Starting Canvas MCP Service on port ${port}`);
+// Static file serving middleware
+expressApp.use(express.static(path.join(process.cwd(), 'src/public')));
 
-// Create the server
-const server = Bun.serve({
-  port: port,
-  websocket: {
-    open(ws) {
-      const clientId = randomUUID();
-      commandManager.addWebSocketClient(clientId, ws);
-      ws.data = { clientId };
+// Command status updates from frontend
+expressApp.post('/command-status', async (req, res) => {
+  try {
+    const { commandId, status, error } = req.body;
+    const updated = commandManager.updateCommandStatus(commandId, status, error);
+    
+    res.json({ success: updated });
+  } catch (error) {
+    res.status(400).json({ error: 'Invalid request' });
+  }
+});
+
+// Command stats endpoint
+expressApp.get('/stats', (req, res) => {
+  const stats = commandManager.getCommandStats();
+  const recentCommands = commandManager.getRecentCommands(5);
+  
+  res.json({ stats, recentCommands });
+});
+
+// Serve the main page for root requests
+expressApp.get('/', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'src/public/index.html'));
+});
+
+// Helper function to parse request body
+async function getRequestBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString();
+}
+
+// Create MCP server and transport
+let mcpTransport: StreamableHTTPServerTransport;
+let mcpServer: McpServer;
+
+async function initializeMCPServer() {
+  mcpTransport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    onsessioninitialized: (sessionId) => {
+      transports[sessionId] = mcpTransport;
+      sessionManager.createSession(sessionId, mcpTransport);
     },
-    message(ws, message) {
+    enableDnsRebindingProtection: true,
+    allowedHosts: ['127.0.0.1', 'localhost', '127.0.0.1:3100', 'localhost:3100'],
+  });
+
+  mcpTransport.onclose = () => {
+    if (mcpTransport.sessionId) {
+      delete transports[mcpTransport.sessionId];
+      sessionManager.removeSession(mcpTransport.sessionId);
+    }
+  };
+
+  mcpServer = new McpServer({
+    name: "canvas-mcp-server",
+    version: "1.0.0"
+  }, {
+    capabilities: {
+      tools: {}
+    }
+  });
+
+  // Register canvas drawing tool
+  mcpServer.tool("draw_canvas", "Draw on HTML canvas using DSL commands. Commands are sent to frontend in real-time via WebSocket/SSE.", { commands: { type: "string", description: "DSL commands to execute on the canvas" } }, async ({ commands }) => {
+      if (!commands || typeof commands !== 'string') {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: No commands provided or invalid command format."
+            }
+          ],
+          isError: true
+        };
+      }
+
+      // Validate DSL commands
+      const validation = validateDSLCommands(commands);
+      if (!validation.isValid) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `DSL Validation Errors:\n${validation.errors.join('\n')}\n\nPlease check your command syntax and try again.`
+            }
+          ],
+          isError: true
+        };
+      }
+
+      // Add command to queue and broadcast to frontend
+      const commandId = commandManager.addCommand(commands, mcpTransport.sessionId);
+      const stats = commandManager.getCommandStats();
+      const clientStats = commandManager.getConnectedClientsCount();
+      
+      let statusMessage: string;
+      if (clientStats.total > 0) {
+        statusMessage = `✅ Commands sent to ${clientStats.total} connected client(s) (${clientStats.websocket} WebSocket)`;
+      } else {
+        statusMessage = `⚠️  No clients connected. Commands queued and will execute when frontend connects.`;
+      }
+      
+      const port = await findAvailablePort(3100);
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${statusMessage}\n\n**Command ID:** ${commandId}\n\n**Commands:**\n\`\`\`\n${commands}\n\`\`\`\n\n**Command Stats:** ${stats.total} total, ${stats.pending} pending, ${stats.executed} executed\n\n🌐 **View the results:** http://localhost:${port}\n\nThe commands have been sent to the frontend Canvas application in real-time. If the frontend is not currently open, the commands will be queued and executed when it connects.`
+          }
+        ]
+      };
+  });
+  
+  // Connect the server to the transport
+  await mcpServer.connect(mcpTransport);
+}
+
+// Start the server
+async function startServer() {
+  const port = await findAvailablePort(3100);
+
+  // Initialize MCP server
+  await initializeMCPServer();
+  
+  // Create HTTP server that handles both MCP and Express requests
+  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const urlPath = req.url ? url.parse(req.url).pathname : '';
+    
+    // Handle MCP endpoints directly with native HTTP
+    if (urlPath === '/mcp') {
+      try {
+        // Let the transport handle the request directly
+        await mcpTransport.handleRequest(req, res);
+        
+      } catch (error) {
+        console.error('Error handling MCP request:', error);
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: 'Internal server error',
+          },
+          id: null,
+        }));
+      }
+      return;
+    }
+    
+    // For all other requests, pass to Express
+    expressApp(req as any, res as any);
+  });
+
+  // Setup WebSocket server
+  const wss = new WebSocketServer({ 
+    server,
+    path: '/ws'
+  });
+
+  wss.on('connection', (ws: WebSocket, req) => {
+    const clientId = randomUUID();
+    commandManager.addWebSocketClient(clientId, ws);
+
+    // Store client ID for cleanup
+    (ws as any).clientId = clientId;
+
+    ws.on('message', (data) => {
       // Handle incoming WebSocket messages (e.g., status updates)
       try {
-        const data = JSON.parse(message.toString());
-        if (data.type === 'command-status') {
-          const { commandId, status, error } = data;
+        const message = JSON.parse(data.toString());
+        if (message.type === 'command-status') {
+          const { commandId, status, error } = message;
           commandManager.updateCommandStatus(commandId, status, error);
         }
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
       }
-    },
-    close(ws) {
-      const clientId = (ws.data as any)?.clientId;
+    });
+
+    ws.on('close', () => {
+      const clientId = (ws as any).clientId;
       if (clientId) {
         commandManager.removeWebSocketClient(clientId);
       }
-    }
-  },
-  async fetch(req: Request): Promise<Response> {
-    const url = new URL(req.url);
+    });
 
-    // Handle WebSocket upgrade requests
-    if (url.pathname === '/ws') {
-      if (req.headers.get("upgrade") === "websocket") {
-        const success = server.upgrade(req);
-        if (success) {
-          return new Response(null, { status: 101 });
-        }
-        return new Response("WebSocket upgrade failed", { status: 400 });
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      const clientId = (ws as any).clientId;
+      if (clientId) {
+        commandManager.removeWebSocketClient(clientId);
       }
-      return new Response("Expected websocket", { status: 400 });
+    });
+  });
+
+  server.listen(port, 'localhost', () => {
+    console.log(`🎨 Canvas MCP Service is running at http://localhost:${port}`);
+    console.log(`📡 MCP endpoint available at http://localhost:${port}/mcp`);
+    console.log(`🔌 WebSocket endpoint available at ws://localhost:${port}/ws`);
+    console.log(`📡 SSE endpoint available at http://localhost:${port}/sse`);
+  });
+
+  // Periodic cleanup of old commands, disconnected clients, and inactive sessions
+  setInterval(() => {
+    const cleanedCommands = commandManager.cleanupOldCommands();
+    if (cleanedCommands > 0) {
+      console.log(`🧹 Cleaned up ${cleanedCommands} old commands`);
     }
-
-
-    // Handle command status updates from frontend
-    if (url.pathname === '/command-status' && req.method === 'POST') {
-      try {
-        const { commandId, status, error } = await req.json();
-        const updated = commandManager.updateCommandStatus(commandId, status, error);
-        
-        return new Response(JSON.stringify({ success: updated }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (error) {
-        return new Response(JSON.stringify({ error: 'Invalid request' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
+    
+    const cleanedSessions = sessionManager.cleanupInactiveSessions();
+    if (cleanedSessions > 0) {
+      console.log(`🧹 Cleaned up ${cleanedSessions} inactive sessions`);
     }
-
-    // Handle command stats endpoint
-    if (url.pathname === '/stats' && req.method === 'GET') {
-      const stats = commandManager.getCommandStats();
-      const recentCommands = commandManager.getRecentCommands(5);
-      
-      return new Response(JSON.stringify({ stats, recentCommands }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+    
+    // Log connection stats periodically
+    const clientStats = commandManager.getConnectedClientsCount();
+    const sessionStats = sessionManager.getSessionStats();
+    
+    if (clientStats.total > 0 || sessionStats.total > 0) {
+      console.log(`📊 Connected clients: ${clientStats.total} (${clientStats.websocket} WebSocket)`);
+      console.log(`📋 Active sessions: ${sessionStats.active}/${sessionStats.total}`);
     }
+  }, 30000); // Every 30 seconds
 
-    // Handle MCP endpoints
-    if (url.pathname === '/mcp') {
-      if (req.method === 'POST') {
-        // Handle POST requests for client-to-server communication
-        const sessionId = req.headers.get('mcp-session-id') || undefined;
-        let transport: StreamableHTTPServerTransport;
+  return server;
+}
 
-        const body = await req.json();
-
-        if (sessionId && transports[sessionId]) {
-          // Reuse existing transport
-          transport = transports[sessionId];
-        } else if (!sessionId && isInitializeRequest(body)) {
-          // New initialization request
-          transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (sessionId) => {
-              // Store the transport by session ID
-              transports[sessionId] = transport;
-              // Create session in session manager
-              sessionManager.createSession(sessionId, transport);
-            },
-            enableDnsRebindingProtection: true,
-            allowedHosts: ['127.0.0.1', 'localhost'],
-          });
-
-          // Clean up transport when closed
-          transport.onclose = () => {
-            if (transport.sessionId) {
-              delete transports[transport.sessionId];
-              sessionManager.removeSession(transport.sessionId);
-            }
-          };
-
-          const mcpServer = new McpServer({
-            name: "canvas-mcp-server",
-            version: "1.0.0"
-          }, {
-            capabilities: {
-              tools: {}
-            }
-          });
-
-          // Register canvas drawing tool using the correct MCP SDK method
-          mcpServer.tool("draw_canvas", "Draw on HTML canvas using DSL commands. Commands are sent to frontend in real-time via WebSocket/SSE.", { commands: { type: "string", description: "DSL commands to execute on the canvas" } }, async ({ commands }) => {
-              if (!commands || typeof commands !== 'string') {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: "Error: No commands provided or invalid command format."
-                    }
-                  ],
-                  isError: true
-                };
-              }
-
-              // Validate DSL commands
-              const validation = validateDSLCommands(commands);
-              if (!validation.isValid) {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: `DSL Validation Errors:\n${validation.errors.join('\n')}\n\nPlease check your command syntax and try again.`
-                    }
-                  ],
-                  isError: true
-                };
-              }
-
-              // Add command to queue and broadcast to frontend
-              const commandId = commandManager.addCommand(commands, transport.sessionId);
-              const stats = commandManager.getCommandStats();
-              const clientStats = commandManager.getConnectedClientsCount();
-              
-              let statusMessage: string;
-              if (clientStats.total > 0) {
-                statusMessage = `✅ Commands sent to ${clientStats.total} connected client(s) (${clientStats.websocket} WebSocket)`;
-              } else {
-                statusMessage = `⚠️  No clients connected. Commands queued and will execute when frontend connects.`;
-              }
-              
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `${statusMessage}\n\n**Command ID:** ${commandId}\n\n**Commands:**\n\`\`\`\n${commands}\n\`\`\`\n\n**Command Stats:** ${stats.total} total, ${stats.pending} pending, ${stats.executed} executed\n\n🌐 **View the results:** http://localhost:${port}\n\nThe commands have been sent to the frontend Canvas application in real-time. If the frontend is not currently open, the commands will be queued and executed when it connects.`
-                  }
-                ]
-              };
-          });
-
-          // Connect to the MCP server BEFORE handling the request
-          await mcpServer.connect(transport);
-        } else {
-          // Invalid request
-          return new Response(JSON.stringify({
-            jsonrpc: '2.0',
-            error: {
-              code: -32000,
-              message: 'Bad Request: No valid session ID provided',
-            },
-            id: null,
-          }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
-        // Handle the request using transport
-        try {
-          // For POST requests, we need to handle the response manually
-          const response = new Response();
-          await transport.handleRequest(req, response, body);
-          return response;
-        } catch (error) {
-          console.error('Error handling MCP request:', error);
-          return new Response(JSON.stringify({
-            jsonrpc: '2.0',
-            error: {
-              code: -32000,
-              message: 'Internal server error',
-            },
-            id: null,
-          }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      } else if (req.method === 'GET') {
-        // Handle GET requests for server-to-client notifications via SSE
-        const sessionId = req.headers.get('mcp-session-id');
-        if (!sessionId || !transports[sessionId]) {
-          return new Response('Invalid or missing session ID', { status: 400 });
-        }
-
-        const transport = transports[sessionId];
-        try {
-          const response = new Response();
-          await transport.handleRequest(req, response);
-          return response;
-        } catch (error) {
-          console.error('Error handling GET request:', error);
-          return new Response('Internal server error', { status: 500 });
-        }
-      } else if (req.method === 'DELETE') {
-        // Handle DELETE requests for session termination
-        const sessionId = req.headers.get('mcp-session-id');
-        if (!sessionId || !transports[sessionId]) {
-          return new Response('Invalid or missing session ID', { status: 400 });
-        }
-
-        const transport = transports[sessionId];
-        try {
-          const response = new Response();
-          await transport.handleRequest(req, response);
-          return response;
-        } catch (error) {
-          console.error('Error handling DELETE request:', error);
-          return new Response('Internal server error', { status: 500 });
-        }
-      }
-    }
-
-    // Serve static files
-    const filePath = url.pathname === '/' ? '/index.html' : url.pathname;
-    const file = Bun.file(`./src/public${filePath}`);
-
-    if (await file.exists()) {
-      return new Response(file);
-    }
-
-    return new Response("Not Found", { status: 404 });
-  }
-});
-
-console.log(`🦊 Canvas MCP Service is running at http://localhost:${server.port}`);
-console.log(`📡 MCP endpoint available at http://localhost:${server.port}/mcp`);
-console.log(`🔌 WebSocket endpoint available at ws://localhost:${server.port}/ws`);
-console.log(`📡 SSE endpoint available at http://localhost:${server.port}/sse`);
-
-// Periodic cleanup of old commands, disconnected clients, and inactive sessions
-setInterval(() => {
-  const cleanedCommands = commandManager.cleanupOldCommands();
-  if (cleanedCommands > 0) {
-    console.log(`🧹 Cleaned up ${cleanedCommands} old commands`);
-  }
-  
-  const cleanedSessions = sessionManager.cleanupInactiveSessions();
-  if (cleanedSessions > 0) {
-    console.log(`🧹 Cleaned up ${cleanedSessions} inactive sessions`);
-  }
-  
-  // Log connection stats periodically
-  const clientStats = commandManager.getConnectedClientsCount();
-  const sessionStats = sessionManager.getSessionStats();
-  
-  if (clientStats.total > 0 || sessionStats.total > 0) {
-    console.log(`📊 Connected clients: ${clientStats.total} (${clientStats.websocket} WebSocket)`);
-    console.log(`📋 Active sessions: ${sessionStats.active}/${sessionStats.total}`);
-  }
-}, 30000); // Every 30 seconds
+// Start the server
+startServer().catch(console.error);

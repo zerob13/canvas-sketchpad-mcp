@@ -4,20 +4,26 @@
   "description": "AI Canvas Drawing Service with MCP Server",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
-    "build:frontend": "bun build ./src/public/main.ts --outdir ./src/public/dist --minify"
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "build:frontend": "esbuild ./src/public/main.ts --bundle --outfile=./src/public/dist/main.js --minify",
+    "build:all": "npm run build && npm run build:frontend"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/node": "^22.0.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.13"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "tsx": "^4.19.1",
+    "esbuild": "^0.24.0"
   },
   "type": "module"
 }
