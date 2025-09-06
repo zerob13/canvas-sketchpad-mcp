@@ -532,11 +532,25 @@ async function initializeMCPServer() {
 			tools: [
 				{
 					name: 'draw_canvas',
-					description: 'Create interactive canvas drawings using a Domain Specific Language (DSL). This tool allows you to programmatically generate visual elements, diagrams, UI mockups, and illustrations on an HTML canvas. ' +
-								'The drawing commands are executed in real-time and support interactive elements with click events. ' +
-								'Perfect for creating visual explanations, diagrams, charts, user interface prototypes, and educational content. ' +
-								'The canvas automatically scales to fit available space and provides immediate visual feedback. ' +
-								'Use this when you need to visually demonstrate concepts, create diagrams, or build interactive visual content.',
+					description: '📝 **Visual Communication Canvas** - A provided drawing canvas for visual communication with users. Use this as a digital sketchpad to draw simple diagrams, sketches, and visual explanations that help communicate ideas more effectively than words alone. ' +
+								'Think of it as a whiteboard or notepad - keep drawings simple and focused on communication rather than creating complex artwork.\n\n' +
+								'🎯 **Best Use Cases:**\n' +
+								'• Quick sketches to explain concepts or processes\n' +
+								'• Simple diagrams (flowcharts, layouts, relationships)\n' +
+								'• Visual annotations and labels\n' +
+								'• Step-by-step illustrations\n' +
+								'• Basic wireframes or mockups\n' +
+								'• Geometric shapes to represent ideas\n\n' +
+								'💡 **Guidelines:**\n' +
+								'• Keep it simple - this is a communication tool, not art creation\n' +
+								'• Use clear, readable text and basic shapes\n' +
+								'• Focus on conveying information rather than aesthetics\n' +
+								'• Think "rough sketch" rather than "polished design"\n\n' +
+								'📐 **Canvas Properties:**\n' +
+								'• Canvas Size: 800 × 500 pixels (width × height)\n' +
+								'• Coordinate System: Top-left (0,0) to bottom-right (800,500)\n' +
+								'• Recommended drawing area: 20-780 pixels (width), 20-480 pixels (height)\n' +
+								'• Use clear, contrasting colors for better readability',
 					inputSchema: {
 						type: "object",
 						properties: {

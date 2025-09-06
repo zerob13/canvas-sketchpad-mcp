@@ -33,11 +33,14 @@ class CanvasMCPApp {
 				this.stateManager,
 			);
 
-			// 设置事件监听
-			this.setupEventListeners();
+		// 设置事件监听
+		this.setupEventListeners();
 
-			// 开始轮询MCP命令
-			this.startMCPPolling();
+		// 设置手动测试功能
+		this.setupManualTesting();
+
+		// 开始轮询MCP命令
+		this.startMCPPolling();
 
 		console.log("✅ Canvas MCP Application initialized successfully");
 		} catch (error) {
@@ -82,6 +85,49 @@ class CanvasMCPApp {
 				}
 			}
 		});
+	}
+
+	private setupManualTesting(): void {
+		// 执行手动命令按钮
+		const executeButton = document.getElementById("execute-manual-btn");
+		if (executeButton) {
+			executeButton.addEventListener("click", () => {
+				this.executeManualCommands();
+			});
+		}
+
+		// 预设示例按钮
+		const loadBasicButton = document.getElementById("load-basic-example");
+		if (loadBasicButton) {
+			loadBasicButton.addEventListener("click", () => {
+				this.loadBasicExample();
+			});
+		}
+
+		const loadUIButton = document.getElementById("load-ui-mockup");
+		if (loadUIButton) {
+			loadUIButton.addEventListener("click", () => {
+				this.loadUIMockupExample();
+			});
+		}
+
+		const loadDiagramButton = document.getElementById("load-diagram");
+		if (loadDiagramButton) {
+			loadDiagramButton.addEventListener("click", () => {
+				this.loadDiagramExample();
+			});
+		}
+
+		// 支持键盘快捷键 Ctrl+Enter 执行命令
+		const inputArea = document.getElementById("manual-dsl-input") as HTMLTextAreaElement;
+		if (inputArea) {
+			inputArea.addEventListener("keydown", (event) => {
+				if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+					event.preventDefault();
+					this.executeManualCommands();
+				}
+			});
+		}
 	}
 
 	private startMCPPolling(): void {
@@ -175,7 +221,7 @@ class CanvasMCPApp {
 			console.error("Failed to create WebSocket connection:", error);
 			this.domManager.showMessage(
 				"Failed to connect to MCP server. Using fallback polling.",
-				"warning",
+				"error",
 			);
 		}
 	}
@@ -350,6 +396,110 @@ class CanvasMCPApp {
 		this.domManager.clearCommandHistory();
 		this.updateStatusDisplay();
 		this.domManager.showMessage("History cleared", "info");
+	}
+
+	/**
+	 * 执行手动输入的DSL命令
+	 */
+	private executeManualCommands(): void {
+		const inputArea = document.getElementById("manual-dsl-input") as HTMLTextAreaElement;
+		if (!inputArea) {
+			console.warn("Manual DSL input area not found");
+			return;
+		}
+
+		const commands = inputArea.value.trim();
+		if (!commands) {
+			this.domManager.showMessage("Please enter some DSL commands to execute", "info");
+			return;
+		}
+
+		console.log("🧪 Executing manual DSL commands:", commands);
+		this.executeCommand(commands);
+		this.domManager.showMessage("Manual commands executed successfully", "success");
+	}
+
+	/**
+	 * 加载基础示例
+	 */
+	private loadBasicExample(): void {
+		const basicExample = `clear()
+s(#FF6B6B,#4ECDC4,2,20,bold)
+t(Hello Canvas!,100,100)
+fr(50,150,200,80)
+c(400,200,50)
+l(200,300,600,300)`;
+		this.setManualInput(basicExample);
+	}
+
+	/**
+	 * 加载UI界面模型示例
+	 */
+	private loadUIMockupExample(): void {
+		const uiExample = `clear()
+s(#F8F9FA,#F8F9FA,1)
+fr(0,0,800,500)
+s(#343A40,#6C757D,2,16,bold)
+fr(50,50,700,80)
+s(white,white,1,24,bold)
+t(Dashboard Header,60,90)
+s(#007BFF,#007BFF,1)
+fr(60,150,200,120)
+fr(280,150,200,120)
+fr(500,150,200,120)
+s(white,white,1,16,bold)
+t(Analytics,110,210)
+t(Reports,360,210)
+t(Settings,580,210)
+s(#6C757D,#6C757D,1)
+l(50,300,750,300)
+s(#495057,#495057,1,14)
+t(Footer Content,60,450)`;
+		this.setManualInput(uiExample);
+	}
+
+	/**
+	 * 加载流程图示例
+	 */
+	private loadDiagramExample(): void {
+		const diagramExample = `clear()
+s(#E3F2FD,#E3F2FD,1)
+fr(0,0,800,500)
+s(#1976D2,#2196F3,2,14,normal)
+fr(100,100,120,60)
+fr(350,100,120,60)
+fr(600,100,120,60)
+s(white,white,1,12,bold)
+t(Start,140,135)
+t(Process,395,135)
+t(End,640,135)
+s(#1976D2,#1976D2,2)
+l(220,130,350,130)
+l(470,130,600,130)
+s(#1976D2,#1976D2,1,12)
+t(→,275,125)
+t(→,525,125)
+s(#FF9800,#FFC107,2)
+c(160,250,30)
+c(410,250,30)
+s(#000000,#000000,1,10)
+t(Decision,135,255)
+t(Condition,385,255)
+s(#FF9800,#FF9800,2)
+l(160,190,160,220)
+l(410,190,410,220)`;
+		this.setManualInput(diagramExample);
+	}
+
+	/**
+	 * 设置手动输入区域的内容
+	 */
+	private setManualInput(content: string): void {
+		const inputArea = document.getElementById("manual-dsl-input") as HTMLTextAreaElement;
+		if (inputArea) {
+			inputArea.value = content;
+			inputArea.focus();
+		}
 	}
 
 	private updateStatusDisplay(): void {

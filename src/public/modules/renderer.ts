@@ -159,8 +159,24 @@ export class CanvasRenderer {
 							value.trim(),
 						);
 						break;
-					case "f": // font
+					case "f": // font (complete font string)
 						styleUpdates.font = this.stateManager.parseFont(value.trim());
+						break;
+					case "fs": // fontSize
+						const currentFont = this.stateManager.currentStyle.font || "16px Arial";
+						const [, , , fontFamily] = currentFont.split(" ");
+						styleUpdates.font = `${value.trim()}px ${fontFamily || "Arial"}`;
+						break;
+					case "fw": // fontWeight
+						const existingFont = this.stateManager.currentStyle.font || "16px Arial";
+						const [fontSize, , , fontFamilyName] = existingFont.split(" ");
+						styleUpdates.font = `${value.trim()} ${fontSize} ${fontFamilyName || "Arial"}`;
+						break;
+					case "bg": // backgroundColor (not directly supported in canvas, could be used for background fills)
+					case "bc": // borderColor (could map to strokeColor)
+					case "bo": // borderWidth (could map to lineWidth)
+						// These are extended properties that might not directly map to canvas styles
+						console.info(`Style property "${key}" is not directly supported in canvas rendering`);
 						break;
 					default:
 						console.warn(`Unknown style property: ${key}`);
@@ -172,18 +188,16 @@ export class CanvasRenderer {
 	}
 
 	/**
-	 * 执行线条命令: l(10,10;100,100)
+	 * 执行线条命令: l(x1,y1,x2,y2)
 	 */
 	private executeLineCommand(command: DSLCommand): void {
-		if (command.args.length < 2) {
+		if (command.args.length !== 4) {
 			throw new Error(
-				`Line command requires 2 coordinate arguments, got ${command.args.length}`,
+				`Line command requires 4 arguments: x1,y1,x2,y2, got ${command.args.length}`,
 			);
 		}
 
-		const [start, end] = command.args;
-		const [x1, y1] = this.parseCoordinate(start);
-		const [x2, y2] = this.parseCoordinate(end);
+		const [x1, y1, x2, y2] = command.args as [number, number, number, number];
 
 		this.applyStyles();
 
@@ -194,54 +208,48 @@ export class CanvasRenderer {
 	}
 
 	/**
-	 * 执行矩形命令: r(50,50;100,80)
+	 * 执行矩形命令: r(x,y,width,height)
 	 */
 	private executeRectCommand(command: DSLCommand): void {
-		if (command.args.length < 2) {
+		if (command.args.length !== 4) {
 			throw new Error(
-				`Rectangle command requires 2 arguments, got ${command.args.length}`,
+				`Rectangle command requires 4 arguments: x,y,width,height, got ${command.args.length}`,
 			);
 		}
 
-		const [position, size] = command.args;
-		const [x, y] = this.parseCoordinate(position);
-		const [width, height] = this.parseCoordinate(size);
+		const [x, y, width, height] = command.args as [number, number, number, number];
 
 		this.applyStyles();
 		this.ctx.strokeRect(x, y, width, height);
 	}
 
 	/**
-	 * 执行填充矩形命令: fr(50,50;100,80)
+	 * 执行填充矩形命令: fr(x,y,width,height)
 	 */
 	private executeFillRectCommand(command: DSLCommand): void {
-		if (command.args.length < 2) {
+		if (command.args.length !== 4) {
 			throw new Error(
-				`Fill rectangle command requires 2 arguments, got ${command.args.length}`,
+				`Fill rectangle command requires 4 arguments: x,y,width,height, got ${command.args.length}`,
 			);
 		}
 
-		const [position, size] = command.args;
-		const [x, y] = this.parseCoordinate(position);
-		const [width, height] = this.parseCoordinate(size);
+		const [x, y, width, height] = command.args as [number, number, number, number];
 
 		this.applyStyles();
 		this.ctx.fillRect(x, y, width, height);
 	}
 
 	/**
-	 * 执行圆形命令: c(200,200;50)
+	 * 执行圆形命令: c(x,y,radius)
 	 */
 	private executeCircleCommand(command: DSLCommand): void {
-		if (command.args.length < 2) {
+		if (command.args.length !== 3) {
 			throw new Error(
-				`Circle command requires 2 arguments, got ${command.args.length}`,
+				`Circle command requires 3 arguments: x,y,radius, got ${command.args.length}`,
 			);
 		}
 
-		const [center, radiusArg] = command.args;
-		const [x, y] = this.parseCoordinate(center);
-		const radius = this.parseNumber(radiusArg);
+		const [x, y, radius] = command.args as [number, number, number];
 
 		this.applyStyles();
 
@@ -251,18 +259,16 @@ export class CanvasRenderer {
 	}
 
 	/**
-	 * 执行填充圆形命令: fc(200,200;50)
+	 * 执行填充圆形命令: fc(x,y,radius)
 	 */
 	private executeFillCircleCommand(command: DSLCommand): void {
-		if (command.args.length < 2) {
+		if (command.args.length !== 3) {
 			throw new Error(
-				`Fill circle command requires 2 arguments, got ${command.args.length}`,
+				`Fill circle command requires 3 arguments: x,y,radius, got ${command.args.length}`,
 			);
 		}
 
-		const [center, radiusArg] = command.args;
-		const [x, y] = this.parseCoordinate(center);
-		const radius = this.parseNumber(radiusArg);
+		const [x, y, radius] = command.args as [number, number, number];
 
 		this.applyStyles();
 
@@ -272,29 +278,31 @@ export class CanvasRenderer {
 	}
 
 	/**
-	 * 执行文本命令: t(50,60;Hello World)
+	 * 执行文本命令: t(text,x,y)
 	 */
 	private executeTextCommand(command: DSLCommand): void {
-		if (command.args.length < 2) {
+		if (command.args.length !== 3) {
 			throw new Error(
-				`Text command requires 2 arguments, got ${command.args.length}`,
+				`Text command requires 3 arguments: text,x,y, got ${command.args.length}`,
 			);
 		}
 
-		const [position, text] = command.args;
-		const [x, y] = this.parseCoordinate(position);
+		const [x, y, text] = command.args as [number, number, string];
 
 		this.applyStyles();
-		this.ctx.fillText(String(text), x, y);
+		this.ctx.fillText(text, x, y);
 	}
 
 	/**
-	 * 执行路径命令: p(10,10;50,80;100,20)
+	 * 执行路径命令: p(x1,y1,x2,y2,x3,y3,...)
 	 */
 	private executePathCommand(command: DSLCommand): void {
-		if (command.args.length < 2) {
+		// command.args 现在是一个点的数组 Array<{x: number, y: number}>
+		const points = command.args as Array<{ x: number; y: number }>;
+		
+		if (points.length < 2) {
 			throw new Error(
-				`Path command requires at least 2 coordinate arguments, got ${command.args.length}`,
+				`Path command requires at least 2 points, got ${points.length}`,
 			);
 		}
 
@@ -303,13 +311,13 @@ export class CanvasRenderer {
 		this.ctx.beginPath();
 
 		// 移动到第一个点
-		const [firstX, firstY] = this.parseCoordinate(command.args[0]);
-		this.ctx.moveTo(firstX, firstY);
+		const firstPoint = points[0];
+		this.ctx.moveTo(firstPoint.x, firstPoint.y);
 
 		// 连接到其余点
-		for (let i = 1; i < command.args.length; i++) {
-			const [x, y] = this.parseCoordinate(command.args[i]);
-			this.ctx.lineTo(x, y);
+		for (let i = 1; i < points.length; i++) {
+			const point = points[i];
+			this.ctx.lineTo(point.x, point.y);
 		}
 
 		this.ctx.stroke();
@@ -326,65 +334,28 @@ export class CanvasRenderer {
 	}
 
 	/**
-	 * 执行动作命令: action(50,50;100,80;button_click)
+	 * 执行动作命令: action(x,y,width,height,eventName)
 	 */
 	private executeActionCommand(command: DSLCommand): void {
-		if (command.args.length < 3) {
+		if (command.args.length !== 5) {
 			throw new Error(
-				`Action command requires 3 arguments, got ${command.args.length}`,
+				`Action command requires 5 arguments: x,y,width,height,eventName, got ${command.args.length}`,
 			);
 		}
 
-		const [position, size, eventName] = command.args;
-		const [x, y] = this.parseCoordinate(position);
-		const [width, height] = this.parseCoordinate(size);
+		const [x, y, width, height, eventName] = command.args as [number, number, number, number, string];
 
 		const clickableArea: ClickableArea = {
 			x,
 			y,
 			width,
 			height,
-			eventName: String(eventName),
+			eventName,
 		};
 
 		this.stateManager.addAction(clickableArea);
 	}
 
-	/**
-	 * 解析坐标字符串 "x,y" -> [x, y]
-	 */
-	private parseCoordinate(coord: any): [number, number] {
-		if (typeof coord !== "string") {
-			throw new Error(`Invalid coordinate format: ${coord}`);
-		}
-
-		const parts = coord.split(",");
-		if (parts.length !== 2) {
-			throw new Error(`Invalid coordinate format: ${coord}, expected "x,y"`);
-		}
-
-		const x = parseFloat(parts[0].trim());
-		const y = parseFloat(parts[1].trim());
-
-		if (isNaN(x) || isNaN(y)) {
-			throw new Error(`Invalid coordinate values: ${coord}`);
-		}
-
-		return [x, y];
-	}
-
-	/**
-	 * 解析数字参数
-	 */
-	private parseNumber(value: any): number {
-		const num = typeof value === "string" ? parseFloat(value) : Number(value);
-
-		if (isNaN(num)) {
-			throw new Error(`Invalid number format: ${value}`);
-		}
-
-		return num;
-	}
 
 	/**
 	 * 获取 Canvas 上下文信息（调试用）

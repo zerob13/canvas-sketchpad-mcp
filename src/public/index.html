@@ -57,19 +57,51 @@
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Command History - Simplified -->
+                <!-- Manual Test Area -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-4">📝 Command History</h2>
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">🧪 Manual Test Area</h2>
                     
                     <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">DSL Commands Input:</label>
+                        <textarea 
+                            id="manual-dsl-input"
+                            class="code-input w-full h-32 p-3 border border-gray-300 rounded-md bg-gray-50 text-sm"
+                            placeholder="Enter DSL commands here (one per line)..."
+                        >clear()
+s(#FF6B6B,#4ECDC4,2,20,bold)
+t(Hello Canvas!,100,100)
+fr(50,150,200,80)
+c(400,200,50)
+l(200,300,600,300)</textarea>
+                    </div>
+                    
+                    <!-- Quick Actions -->
+                    <div class="mb-4 space-y-2">
+                        <div class="flex flex-wrap gap-2">
+                            <button id="execute-manual-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
+                                🎯 Execute Commands
+                            </button>
+                            <button id="load-basic-example" class="px-3 py-2 text-xs bg-gray-600 text-white rounded hover:bg-gray-700">
+                                Load Basic Example
+                            </button>
+                            <button id="load-ui-mockup" class="px-3 py-2 text-xs bg-gray-600 text-white rounded hover:bg-gray-700">
+                                Load UI Mockup
+                            </button>
+                            <button id="load-diagram" class="px-3 py-2 text-xs bg-gray-600 text-white rounded hover:bg-gray-700">
+                                Load Diagram
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Command History -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Command History:</label>
                         <div 
                             id="command-history" 
-                            class="code-input w-full h-48 p-3 border border-gray-300 rounded-md bg-gray-50 overflow-y-auto text-sm"
+                            class="code-input w-full h-24 p-3 border border-gray-300 rounded-md bg-gray-50 overflow-y-auto text-sm"
                         >
-                            <div class="text-gray-500 text-center py-8">
-                                Waiting for MCP commands...
-                                <br>
-                                <span class="text-xs">Commands will appear here when executed via MCP</span>
+                            <div class="text-gray-500 text-center py-2">
+                                <span class="text-xs">Commands will appear here when executed</span>
                             </div>
                         </div>
                     </div>
@@ -85,27 +117,38 @@
                     </div>
                 </div>
 
-                <!-- DSL Reference - Compact -->
+                <!-- DSL Reference - Updated -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                    <h2 class="text-xl font-semibold text-gray-800 mb-4">📚 DSL Reference</h2>
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">📚 DSL Reference (New Format)</h2>
                     
-                    <div class="text-xs space-y-1">
+                    <div class="text-xs space-y-2">
                         <div class="grid grid-cols-1 gap-1 font-mono">
-                            <div class="mb-1"><strong>Style Properties:</strong></div>
-                            <div class="text-xs pl-2">
-                                <code class="text-blue-600">s(sc:#FF0000;fc:#0000FF;lw:3;fs:16;fw:bold;bg:#FFF;bc:#000;bo:1)</code><br>
-                                <span class="text-gray-500">sc:stroke fc:fill lw:lineWidth fs:fontSize fw:fontWeight<br>
-                                bg:background bc:borderColor bo:borderWidth</span>
+                            <div class="mb-1"><strong>🎨 Style Command (comma-separated):</strong></div>
+                            <div class="text-xs pl-2 bg-blue-50 p-2 rounded">
+                                <code class="text-blue-600">s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)</code><br>
+                                <span class="text-gray-500 text-xs mt-1 block">
+                                    Example: <code>s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)</code><br>
+                                    Or partial: <code>s(#FF0000,,2)</code> (empty values to skip)
+                                </span>
                             </div>
-                            <div class="mt-2"><strong>Drawing Commands:</strong></div>
+                            
+                            <div class="mt-3"><strong>🖼️ Drawing Commands (all comma-separated):</strong></div>
                             <div class="text-xs pl-2 space-y-1">
-                                <div><strong>Line:</strong> <code class="text-blue-600">l(x1,y1;x2,y2)</code></div>
-                                <div><strong>Rectangle:</strong> <code class="text-blue-600">r(x,y;w,h)</code> | <code class="text-blue-600">fr(x,y;w,h)</code></div>
-                                <div><strong>Circle:</strong> <code class="text-blue-600">c(x,y;radius)</code> | <code class="text-blue-600">fc(x,y;radius)</code></div>
-                                <div><strong>Text:</strong> <code class="text-blue-600">t(x,y;text content)</code></div>
-                                <div><strong>Path:</strong> <code class="text-blue-600">p(x1,y1;x2,y2;...)</code></div>
+                                <div><strong>Line:</strong> <code class="text-blue-600">l(x1,y1,x2,y2)</code></div>
+                                <div><strong>Rectangle:</strong> <code class="text-blue-600">r(x,y,width,height)</code> | <code class="text-blue-600">fr(x,y,width,height)</code></div>
+                                <div><strong>Circle:</strong> <code class="text-blue-600">c(x,y,radius)</code> | <code class="text-blue-600">fc(x,y,radius)</code></div>
+                                <div><strong>Text:</strong> <code class="text-blue-600">t(text,x,y)</code> <span class="text-gray-500">(text first!)</span></div>
+                                <div><strong>Path:</strong> <code class="text-blue-600">p(x1,y1,x2,y2,x3,y3,...)</code></div>
                                 <div><strong>Clear:</strong> <code class="text-blue-600">clear()</code></div>
-                                <div><strong>Action:</strong> <code class="text-blue-600">action(x,y;w,h;eventName)</code></div>
+                                <div><strong>Action:</strong> <code class="text-blue-600">action(x,y,width,height,eventName)</code></div>
+                            </div>
+                            
+                            <div class="mt-3 text-xs bg-yellow-50 p-2 rounded">
+                                <strong>⚠️ Important Changes:</strong><br>
+                                • ALL parameters use comma separation (no semicolons)<br>
+                                • Text command: text comes first: <code>t(Hello,100,200)</code><br>
+                                • Fixed parameter order, no skipping allowed<br>
+                                • Style supports both new format and legacy key:value format
                             </div>
                         </div>
                     </div>
