@@ -15,7 +15,7 @@ A **Model Context Protocol (MCP) service** that provides AI-driven canvas drawin
 
 ### Prerequisites
 
-- [Bun.js](https://bun.sh/) (latest version)
+- [Node.js](https://nodejs.org/) (v18 or higher)
 - Modern web browser with Canvas support
 
 ### Installation
@@ -26,24 +26,24 @@ git clone <your-repo-url>
 cd canvas-mcp
 
 # Install dependencies
-bun install
+npm install
 ```
 
 ### Development
 
 ```bash
 # Start development server with hot reload
-bun run dev
+npm run dev
 ```
 
 ### Production
 
 ```bash
 # Build frontend assets
-bun run build:frontend
+npm run build:frontend
 
 # Start production server
-bun run start
+npm start
 ```
 
 The service will automatically find an available port starting from 3100 and display the URL in the console.
@@ -122,7 +122,7 @@ canvas-mcp/
 
 ### Technology Stack
 
-- **Runtime**: Bun.js
+- **Runtime**: Node.js with Express
 - **Language**: TypeScript (strict mode)
 - **Protocol**: MCP (Model Context Protocol)
 - **Transport**: StreamableHTTP
@@ -131,23 +131,77 @@ canvas-mcp/
 
 ## 🔌 MCP Integration
 
-The service provides a `draw_canvas` tool that can be used by MCP clients:
+The service provides a comprehensive `draw_canvas` tool that can be used by MCP clients:
 
 ```json
 {
   "name": "draw_canvas",
-  "description": "Draw on HTML canvas using DSL commands",
+  "description": "Create interactive canvas drawings using a Domain Specific Language (DSL). This tool allows you to programmatically generate visual elements, diagrams, UI mockups, and illustrations on an HTML canvas. The drawing commands are executed in real-time and support interactive elements with click events. Perfect for creating visual explanations, diagrams, charts, user interface prototypes, and educational content.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "commands": {
-        "type": "string",
-        "description": "DSL commands to execute on canvas"
+        "type": "string", 
+        "description": "DSL commands to execute on the canvas. Multiple commands can be combined using newlines. Each command follows the pattern: command(param1;param2;...). Supported commands: s (set styles), l (line), r (rectangle), fr (filled rectangle), c (circle), fc (filled circle), t (text), p (path), clear, action (clickable area). Example: 's(sc:#FF0000;lw:3)\nl(10,10;100,100)\nfr(50,50;100,80;fc:#0066CC)'"
       }
     },
     "required": ["commands"]
   }
 }
+```
+
+### Usage Examples
+
+**Basic Drawing:**
+```javascript
+// Create a simple diagram
+s(sc:#333333;lw:2;f:16px Arial)
+l(50,50;200,150)
+r(70,70;60,40)
+fc(150,100;25;fc:#FF6B6B)
+t(80,120;Simple Diagram)
+```
+
+**Interactive UI Mockup:**
+```javascript
+// Create interactive buttons
+s(fc:#4ECDC4;sc:#45B7B0;lw:2)
+fr(50,50;120,40;fc:#4ECDC4)
+s(fc:white)
+t(60,75;Submit Button)
+action(50,50;120,40;submit_clicked)
+
+s(fc:#FF6B6B;sc:#EE5A52;lw:2)  
+fr(200,50;120,40;fc:#FF6B6B)
+s(fc:white)
+t(210,75;Cancel Button)
+action(200,50;120,40;cancel_clicked)
+```
+
+**Complex Diagram:**
+```javascript
+// Flowchart elements
+s(sc:#2C3E50;lw:3;f:14px Arial)
+
+// Process boxes
+fr(100,50;120,60;fc:#3498DB)
+t(110,80;Start Process)
+
+fr(100,150;120,60;fc:#2ECC71)  
+t(110,180;Processing)
+
+fr(100,250;120,60;fc:#E74C3C)
+t(110,280;End Process)
+
+// Connector lines
+s(sc:#7F8C8D;lw:2)
+l(160,110;160,150)
+l(160,210;160,250)
+
+// Decision diamond
+s(sc:#F39C12;lw:2;fc:#FDE3A7)
+p(250,150;280,180;250,210;220,180;250,150)
+t(240,190;Decision)
 ```
 
 ### Event System
@@ -171,13 +225,13 @@ The canvas supports interactive events sent via `postMessage`:
 
 ```bash
 # Development with hot reload
-bun run dev
+npm run dev
 
 # Production build
-bun run build:frontend
+npm run build:frontend
 
 # Production server
-bun run start
+npm start
 ```
 
 ### Code Style
@@ -209,7 +263,8 @@ bun run start
 ## 🔗 Related Links
 
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/)
-- [Bun.js Documentation](https://bun.sh/docs)
+- [Node.js Documentation](https://nodejs.org/docs/)
+- [Express.js Documentation](https://expressjs.com/)
 - [HTML5 Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
 
 ## 📞 Support

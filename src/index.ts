@@ -382,14 +382,32 @@ async function initializeMCPServer() {
     }
   });
 
-  // Register canvas drawing tool
-  mcpServer.tool("draw_canvas", "Draw on HTML canvas using DSL commands. Commands are sent to frontend in real-time via WebSocket/SSE.", { commands: { type: "string", description: "DSL commands to execute on the canvas" } }, async ({ commands }) => {
+  // Register canvas drawing tool with enhanced descriptions
+  mcpServer.tool("draw_canvas", 
+    "Create interactive canvas drawings using a Domain Specific Language (DSL). This tool allows you to programmatically generate visual elements, diagrams, UI mockups, and illustrations on an HTML canvas. " +
+    "The drawing commands are executed in real-time and support interactive elements with click events. " +
+    "Perfect for creating visual explanations, diagrams, charts, user interface prototypes, and educational content. " +
+    "The canvas automatically scales to fit available space and provides immediate visual feedback. " +
+    "Use this when you need to visually demonstrate concepts, create diagrams, or build interactive visual content.", 
+    { 
+      commands: { 
+        type: "string", 
+        description: "DSL commands to execute on the canvas. Multiple commands can be combined using newlines. " +
+                     "Each command follows the pattern: command(param1;param2;...). " +
+                     "Supported commands: s (set styles), l (line), r (rectangle), fr (filled rectangle), " +
+                     "c (circle), fc (filled circle), t (text), p (path), clear, action (clickable area). " +
+                     "Example: 's(sc:#FF0000;lw:3)\nl(10,10;100,100)\nfr(50,50;100,80;fc:#0066CC)'"
+      } 
+    }, 
+    async ({ commands }) => {
       if (!commands || typeof commands !== 'string') {
         return {
           content: [
             {
               type: "text",
-              text: "Error: No commands provided or invalid command format."
+              text: "❌ Error: No DSL commands provided or invalid command format. " +
+                    "Please provide valid DSL drawing commands as a string. " +
+                    "Example format: 's(sc:#FF0000;lw:3)\nl(10,10;100,100)'"
             }
           ],
           isError: true
@@ -403,7 +421,12 @@ async function initializeMCPServer() {
           content: [
             {
               type: "text",
-              text: `DSL Validation Errors:\n${validation.errors.join('\n')}\n\nPlease check your command syntax and try again.`
+              text: `❌ DSL Validation Errors:\n\n${validation.errors.join('\n')}\n\n📋 **DSL Syntax Reference:**\n` +
+                    `- Commands: s (styles), l (line), r (rectangle), fr (filled rectangle), c (circle), fc (filled circle), t (text), p (path), clear, action\n` +
+                    `- Format: command(param1;param2;...)\n` +
+                    `- Coordinates: x,y\n` +
+                    `- Colors: #RRGGBB or color names\n` +
+                    `- Example: 's(sc:red;lw:2)\nl(0,0;100,100)\nfr(20,20;60,60;fc:blue)'\n\nPlease fix the syntax errors and try again.`
             }
           ],
           isError: true
@@ -417,18 +440,31 @@ async function initializeMCPServer() {
       
       let statusMessage: string;
       if (clientStats.total > 0) {
-        statusMessage = `✅ Commands sent to ${clientStats.total} connected client(s) (${clientStats.websocket} WebSocket)`;
+        statusMessage = `✅ Successfully sent drawing commands to ${clientStats.total} connected client(s)`;
       } else {
-        statusMessage = `⚠️  No clients connected. Commands queued and will execute when frontend connects.`;
+        statusMessage = `⚠️  No clients currently connected. Commands have been queued and will execute automatically when a frontend connects.`;
       }
       
       const port = await findAvailablePort(3100);
+      
+      // Count the number of commands for better feedback
+      const commandCount = commands.split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length;
       
       return {
         content: [
           {
             type: "text",
-            text: `${statusMessage}\n\n**Command ID:** ${commandId}\n\n**Commands:**\n\`\`\`\n${commands}\n\`\`\`\n\n**Command Stats:** ${stats.total} total, ${stats.pending} pending, ${stats.executed} executed\n\n🌐 **View the results:** http://localhost:${port}\n\nThe commands have been sent to the frontend Canvas application in real-time. If the frontend is not currently open, the commands will be queued and executed when it connects.`
+            text: `🎨 **Canvas Drawing Created**\n\n${statusMessage}\n\n` +
+                  `📋 **Command Details:**\n` +
+                  `- Command ID: ${commandId}\n` +
+                  `- Total Commands: ${commandCount}\n` +
+                  `- Execution Status: ${clientStats.total > 0 ? 'Sent to frontend' : 'Queued for execution'}\n\n` +
+                  `📝 **Commands Executed:**\n\`\`\`\n${commands}\n\`\`\`\n\n` +
+                  `📊 **System Stats:** ${stats.total} total commands, ${stats.pending} pending, ${stats.executed} executed\n\n` +
+                  `🌐 **View Your Drawing:** http://localhost:${port}\n\n` +
+                  `The canvas drawing has been created successfully. You can view the interactive canvas in your web browser. ` +
+                  `The drawing supports real-time updates and interactive elements if you included 'action' commands. ` +
+                  `If you need to modify the drawing, simply call this tool again with updated commands.`
           }
         ]
       };
