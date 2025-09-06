@@ -39,12 +39,10 @@ class CanvasMCPApp {
 			// 开始轮询MCP命令
 			this.startMCPPolling();
 
-			console.log("✅ Canvas MCP Application initialized successfully");
-			this.domManager.setConnectionStatus("connected");
+		console.log("✅ Canvas MCP Application initialized successfully");
 		} catch (error) {
 			console.error("❌ Failed to initialize Canvas MCP Application:", error);
 			if (this.domManager) {
-				this.domManager.setConnectionStatus("error");
 				this.domManager.showMessage(
 					"Application initialization failed: " + (error as Error).message,
 					"error",
@@ -86,8 +84,7 @@ class CanvasMCPApp {
 		});
 	}
 
-	private async startMCPPolling(): void {
-		this.domManager.setConnectionStatus("connecting");
+	private startMCPPolling(): void {
 
 		// 检查是否有待执行的命令（从localStorage或其他持久化存储）
 		this.checkForPendingCommands();
@@ -107,7 +104,6 @@ class CanvasMCPApp {
 
 			eventSource.onopen = () => {
 				console.log("✅ SSE connection established");
-				this.domManager.setConnectionStatus("connected");
 			};
 
 			eventSource.onmessage = (event) => {
@@ -132,7 +128,6 @@ class CanvasMCPApp {
 
 			eventSource.onerror = (error) => {
 				console.error("SSE connection error:", error);
-				this.domManager.setConnectionStatus("error");
 
 				// 尝试重新连接
 				setTimeout(() => {
@@ -145,10 +140,9 @@ class CanvasMCPApp {
 			(this as any)._eventSource = eventSource;
 		} catch (error) {
 			console.error("Failed to create SSE connection:", error);
-			this.domManager.setConnectionStatus("error");
 			this.domManager.showMessage(
 				"Failed to connect to MCP server. Using fallback polling.",
-				"warning",
+				"error",
 			);
 		}
 	}
@@ -228,7 +222,6 @@ class CanvasMCPApp {
 
 			// 更新历史状态为成功
 			this.domManager.addCommandToHistory(commandString, "success");
-			this.domManager.updateLastExecution(commandString);
 			this.domManager.showMessage(
 				`Executed ${successCount} commands successfully`,
 				"success",
@@ -238,9 +231,73 @@ class CanvasMCPApp {
 		} catch (error) {
 			console.error("DSL parsing error:", error);
 			this.domManager.addCommandToHistory(commandString, "error");
-			this.domManager.updateParseStatus("Parse Error", true);
 			this.domManager.showMessage(
 				`Parse error: ${(error as Error).message}`,
+				"error",
+			);
+		}
+	}
+
+	// 消费服务器缓存的命令
+	public async consumeCachedCommands(): Promise<void> {
+		try {
+			console.log("🔄 Checking for cached commands...");
+
+			// 获取pending命令
+			const response = await fetch("/commands/pending");
+			const data = await response.json();
+
+			if (!data.success) {
+				console.error("Failed to get pending commands:", data.error);
+				return;
+			}
+
+			const pendingCommands = data.commands || [];
+			console.log(`📦 Found ${pendingCommands.length} cached commands`);
+
+			if (pendingCommands.length === 0) {
+				return;
+			}
+
+			// 依次执行每个缓存的命令
+			for (const cmd of pendingCommands) {
+				console.log(`⚡ Executing cached command: ${cmd.id}`);
+				
+				try {
+					// 执行命令
+					this.executeCommand(cmd.commands);
+
+					// 标记命令为已消费
+					await fetch("/commands/consume", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ commandId: cmd.id }),
+					});
+
+					console.log(`✅ Command consumed: ${cmd.id}`);
+				} catch (error) {
+					console.error(`❌ Failed to execute cached command ${cmd.id}:`, error);
+					// 即使执行失败，也标记为已消费，避免重复执行
+					await fetch("/commands/consume", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ commandId: cmd.id }),
+					});
+				}
+			}
+
+			this.domManager.showMessage(
+				`🎨 Executed ${pendingCommands.length} cached commands`,
+				"success",
+			);
+		} catch (error) {
+			console.error("❌ Failed to consume cached commands:", error);
+			this.domManager.showMessage(
+				"Failed to load cached commands",
 				"error",
 			);
 		}
@@ -282,8 +339,8 @@ class CanvasMCPApp {
 		this.updateStatusDisplay();
 		this.domManager.showMessage("Canvas cleared", "info");
 
-		// 重新初始化Canvas样式
-		this.canvasRenderer.initializeCanvas();
+		// 重置渲染器状态
+		this.canvasRenderer.reset();
 	}
 
 	private clearHistory(): void {
@@ -297,8 +354,6 @@ class CanvasMCPApp {
 		const summary = this.stateManager.getStateSummary();
 
 		this.domManager.updateCommandCount(summary.historyCount);
-		this.domManager.updateActionCount(summary.actionCount);
-		this.domManager.updateParseStatus("Ready", false);
 	}
 
 	// 销毁应用
@@ -326,7 +381,7 @@ declare global {
 }
 
 // 当DOM加载完成后初始化应用
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
 	try {
 		const app = new CanvasMCPApp();
 
@@ -341,6 +396,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				app.executeCommand(event.data.command);
 			}
 		});
+
+		// 页面启动时获取并消费缓存的命令
+		await app.consumeCachedCommands();
 	} catch (error) {
 		console.error("❌ Failed to start Canvas MCP Application:", error);
 	}

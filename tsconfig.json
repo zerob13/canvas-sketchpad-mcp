@@ -13,5 +13,6 @@
 		"types": ["node"]
 	},
 	"include": ["src/index.ts"],
-	"exclude": ["src/public/**/*"]
+	"exclude": ["src/public/**/*"],
+	"projects": ["./tsconfig.server.json", "./tsconfig.client.json"]
 }

@@ -78,13 +78,9 @@ class CommandManager {
 
 		this.commands.set(id, command);
 
-		// Try to send immediately to any connected clients
-		const sentToClients = this.broadcastCommand(command);
-
-		if (sentToClients > 0) {
-			command.status = "sent";
-			this.commands.set(id, command);
-		}
+		// Commands remain pending until consumed by frontend
+		// Don't change status here - let frontend consume and confirm
+		console.log(`📝 Command queued: ${id} (${commands.split('\n').length} commands)`);
 
 		return id;
 	}
@@ -186,6 +182,40 @@ class CommandManager {
 		return Array.from(this.commands.values())
 			.sort((a, b) => b.timestamp - a.timestamp)
 			.slice(0, limit);
+	}
+
+	// Get all pending commands for frontend consumption
+	getPendingCommands(): CanvasCommand[] {
+		return Array.from(this.commands.values())
+			.filter(cmd => cmd.status === "pending")
+			.sort((a, b) => a.timestamp - b.timestamp); // Oldest first
+	}
+
+	// Mark command as consumed and executed
+	markCommandConsumed(commandId: string): boolean {
+		const command = this.commands.get(commandId);
+		if (command && command.status === "pending") {
+			command.status = "executed";
+			this.commands.set(commandId, command);
+			console.log(`✅ Command consumed: ${commandId}`);
+			return true;
+		}
+		return false;
+	}
+
+	// Clear all consumed commands
+	clearConsumedCommands(): number {
+		let cleared = 0;
+		for (const [id, command] of this.commands.entries()) {
+			if (command.status === "executed") {
+				this.commands.delete(id);
+				cleared++;
+			}
+		}
+		if (cleared > 0) {
+			console.log(`🧹 Cleared ${cleared} consumed commands`);
+		}
+		return cleared;
 	}
 
 	getCommandStats(): {
@@ -395,6 +425,45 @@ expressApp.get("/stats", (req, res) => {
 	res.json({ stats, recentCommands });
 });
 
+// Get pending commands for frontend consumption
+expressApp.get("/commands/pending", (req, res) => {
+	try {
+		const pendingCommands = commandManager.getPendingCommands();
+		res.json({ 
+			success: true, 
+			commands: pendingCommands.map(cmd => ({
+				id: cmd.id,
+				commands: cmd.commands,
+				timestamp: cmd.timestamp
+			}))
+		});
+	} catch (error) {
+		console.error("Error getting pending commands:", error);
+		res.status(500).json({ success: false, error: "Failed to get pending commands" });
+	}
+});
+
+// Mark command as consumed
+expressApp.post("/commands/consume", async (req, res) => {
+	try {
+		const { commandId } = req.body;
+		if (!commandId) {
+			res.status(400).json({ success: false, error: "Command ID is required" });
+			return;
+		}
+
+		const consumed = commandManager.markCommandConsumed(commandId);
+		if (consumed) {
+			res.json({ success: true, message: "Command marked as consumed" });
+		} else {
+			res.status(404).json({ success: false, error: "Command not found or already consumed" });
+		}
+	} catch (error) {
+		console.error("Error consuming command:", error);
+		res.status(500).json({ success: false, error: "Failed to consume command" });
+	}
+});
+
 // Serve the main page for root requests
 expressApp.get("/", (req, res) => {
 	res.sendFile(path.join(process.cwd(), "src/public/index.html"));
@@ -529,12 +598,8 @@ async function initializeMCPServer() {
 		const stats = commandManager.getCommandStats();
 		const clientStats = commandManager.getConnectedClientsCount();
 		
-		let statusMessage: string;
-		if (clientStats.total > 0) {
-			statusMessage = `✅ Successfully sent drawing commands to ${clientStats.total} connected client(s)`;
-		} else {
-			statusMessage = `⚠️  No clients currently connected. Commands have been queued and will execute automatically when a frontend connects.`;
-		}
+		// Commands are now cached in memory until consumed by frontend
+		const statusMessage = `📦 Commands cached in memory for frontend consumption`;
 		
 		const port = await findAvailablePort(3100);
 		
@@ -546,17 +611,17 @@ async function initializeMCPServer() {
 			content: [
 				{
 					type: "text",
-					text: `🎨 **Canvas Drawing Created**\n\n${statusMessage}\n\n` +
+					text: `🎨 **Canvas Drawing Queued**\n\n${statusMessage}\n\n` +
 						  `📋 **Command Details:**\n` +
 						  `- Command ID: ${commandId}\n` +
 						  `- Total Commands: ${commandCount}\n` +
-						  `- Execution Status: ${clientStats.total > 0 ? 'Sent to frontend' : 'Queued for execution'}\n\n` +
-						  `📝 **Commands Executed:**\n\`\`\`json\n${JSON.stringify(commands, null, 2)}\n\`\`\`\n\n` +
+						  `- Status: Cached and waiting for frontend consumption\n` +
+						  `- Commands will persist until executed by the canvas\n\n` +
+						  `📝 **Commands Queued:**\n\`\`\`json\n${JSON.stringify(commands, null, 2)}\n\`\`\`\n\n` +
 						  `📊 **System Stats:** ${stats.total} total commands, ${stats.pending} pending, ${stats.executed} executed\n\n` +
 						  `🌐 **View Your Drawing:** http://localhost:${port}\n\n` +
-						  `The canvas drawing has been created successfully. You can view the interactive canvas in your web browser. ` +
-						  `The drawing supports real-time updates and interactive elements if you included 'action' commands. ` +
-						  `If you need to modify the drawing, simply call this tool again with updated commands.`
+						  `The canvas commands have been cached in server memory. When you open the canvas page, ` +
+						  `it will automatically fetch and execute all pending commands. Commands remain cached until successfully executed.`
 				}
 			]
 		};
@@ -662,6 +727,9 @@ async function startServer() {
 			console.log(`🧹 Cleaned up ${cleanedCommands} old commands`);
 		}
 
+		// Clean up consumed commands
+		const cleanedConsumed = commandManager.clearConsumedCommands();
+
 		const cleanedSessions = sessionManager.cleanupInactiveSessions();
 		if (cleanedSessions > 0) {
 			console.log(`🧹 Cleaned up ${cleanedSessions} inactive sessions`);
@@ -670,13 +738,17 @@ async function startServer() {
 		// Log connection stats periodically
 		const clientStats = commandManager.getConnectedClientsCount();
 		const sessionStats = sessionManager.getSessionStats();
+		const stats = commandManager.getCommandStats();
 
-		if (clientStats.total > 0 || sessionStats.total > 0) {
+		if (clientStats.total > 0 || sessionStats.total > 0 || stats.pending > 0) {
 			console.log(
 				`📊 Connected clients: ${clientStats.total} (${clientStats.websocket} WebSocket)`,
 			);
 			console.log(
 				`📋 Active sessions: ${sessionStats.active}/${sessionStats.total}`,
+			);
+			console.log(
+				`📝 Commands: ${stats.pending} pending, ${stats.executed} executed, ${stats.total} total`,
 			);
 		}
 	}, 30000); // Every 30 seconds

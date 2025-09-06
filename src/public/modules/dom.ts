@@ -9,13 +9,8 @@ export class DOMManager {
 	public readonly commandHistory: HTMLDivElement;
 	public readonly clearHistoryBtn: HTMLButtonElement;
 	public readonly clearCanvasBtn: HTMLButtonElement;
-	public readonly connectionStatus: HTMLSpanElement;
-
 	// Status display elements
-	public readonly parseStatus: HTMLSpanElement;
 	public readonly commandCount: HTMLSpanElement;
-	public readonly actionCount: HTMLSpanElement;
-	public readonly lastExecution: HTMLSpanElement;
 	public readonly messageArea: HTMLDivElement;
 	public readonly messageContent: HTMLDivElement;
 
@@ -42,22 +37,10 @@ export class DOMManager {
 		this.clearCanvasBtn = document.getElementById(
 			"clear-canvas-btn",
 		) as HTMLButtonElement;
-		this.connectionStatus = document.getElementById(
-			"connection-status",
-		) as HTMLSpanElement;
 
 		// Get status display elements
-		this.parseStatus = document.getElementById(
-			"parse-status",
-		) as HTMLSpanElement;
 		this.commandCount = document.getElementById(
 			"command-count",
-		) as HTMLSpanElement;
-		this.actionCount = document.getElementById(
-			"action-count",
-		) as HTMLSpanElement;
-		this.lastExecution = document.getElementById(
-			"last-execution",
 		) as HTMLSpanElement;
 		this.messageArea = document.getElementById(
 			"message-area",
@@ -78,11 +61,7 @@ export class DOMManager {
 			{ name: "commandHistory", element: this.commandHistory },
 			{ name: "clearHistoryBtn", element: this.clearHistoryBtn },
 			{ name: "clearCanvasBtn", element: this.clearCanvasBtn },
-			{ name: "connectionStatus", element: this.connectionStatus },
-			{ name: "parseStatus", element: this.parseStatus },
 			{ name: "commandCount", element: this.commandCount },
-			{ name: "actionCount", element: this.actionCount },
-			{ name: "lastExecution", element: this.lastExecution },
 			{ name: "messageArea", element: this.messageArea },
 			{ name: "messageContent", element: this.messageContent },
 		];
@@ -108,21 +87,8 @@ export class DOMManager {
 	}
 
 	// 状态更新方法
-	updateParseStatus(status: string, isError: boolean = false): void {
-		this.parseStatus.textContent = status;
-		this.parseStatus.className = isError ? "text-red-600" : "text-green-600";
-	}
-
 	updateCommandCount(count: number): void {
 		this.commandCount.textContent = count.toString();
-	}
-
-	updateActionCount(count: number): void {
-		this.actionCount.textContent = count.toString();
-	}
-
-	updateLastExecution(command: string): void {
-		this.lastExecution.textContent = command;
 	}
 
 	showMessage(
@@ -192,34 +158,6 @@ export class DOMManager {
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 	}
 
-	// Set connection status
-	setConnectionStatus(
-		status: "connecting" | "connected" | "disconnected" | "error",
-	): void {
-		const statusElement = this.connectionStatus;
-
-		// Remove all status classes
-		statusElement.className = "px-2 py-1 rounded text-xs";
-
-		switch (status) {
-			case "connecting":
-				statusElement.classList.add("bg-yellow-100", "text-yellow-800");
-				statusElement.textContent = "Connecting...";
-				break;
-			case "connected":
-				statusElement.classList.add("bg-green-100", "text-green-800");
-				statusElement.textContent = "Connected";
-				break;
-			case "disconnected":
-				statusElement.classList.add("bg-gray-100", "text-gray-800");
-				statusElement.textContent = "Disconnected";
-				break;
-			case "error":
-				statusElement.classList.add("bg-red-100", "text-red-800");
-				statusElement.textContent = "Connection Error";
-				break;
-		}
-	}
 
 	// Add command to history display
 	addCommandToHistory(
