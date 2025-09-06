@@ -161,13 +161,10 @@ export class DSLParser {
 		}
 	}
 
-	private parseStyleParameters(
-		params: string[],
-		lineNumber: number,
-	): string[] {
+	private parseStyleParameters(params: string[], lineNumber: number): string[] {
 		// 检查是否是旧的键值对格式（包含冒号）
-		const isKeyValueFormat = params.some(param => param.includes(':'));
-		
+		const isKeyValueFormat = params.some((param) => param.includes(":"));
+
 		if (isKeyValueFormat) {
 			// 支持旧的键值对格式：sc:#FF0000,lw:2 等，直接返回参数数组
 			for (const param of params) {
@@ -183,7 +180,9 @@ export class DSLParser {
 				const [, prop] = match;
 
 				// 验证样式属性
-				if (!["sc", "fc", "lw", "f", "fs", "fw", "bg", "bc", "bo"].includes(prop)) {
+				if (
+					!["sc", "fc", "lw", "f", "fs", "fw", "bg", "bc", "bo"].includes(prop)
+				) {
 					throw new ParseError(
 						`Unknown style property: "${prop}"`,
 						ParseErrorType.INVALID_PARAMETER,
@@ -195,7 +194,7 @@ export class DSLParser {
 		} else {
 			// 新的固定顺序格式：s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)
 			const styleKeys = ["sc", "fc", "lw", "fs", "fw", "bg", "bc", "bo"];
-			
+
 			if (params.length === 0 || params.length > styleKeys.length) {
 				throw new ParseError(
 					`Style command expects 1-${styleKeys.length} parameters in order: strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth`,
@@ -208,7 +207,8 @@ export class DSLParser {
 			const result: string[] = [];
 			for (let i = 0; i < params.length; i++) {
 				const value = params[i].trim();
-				if (value) { // 只有非空值才设置
+				if (value) {
+					// 只有非空值才设置
 					result.push(`${styleKeys[i]}:${value}`);
 				}
 			}
@@ -392,7 +392,6 @@ export class DSLParser {
 		return [x, y, width, height, eventName];
 	}
 
-
 	private parseNumber(numStr: string, lineNumber: number): number {
 		const trimmed = numStr.trim();
 
@@ -447,16 +446,19 @@ export class DSLParser {
 	 */
 	public getCommandHelp(): Record<CommandType, string> {
 		return {
-			style: "s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth) - Set drawing styles (e.g., s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1))",
+			style:
+				"s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth) - Set drawing styles (e.g., s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1))",
 			line: "l(x1,y1,x2,y2) - Draw a line (e.g., l(50,620,50,820))",
 			rect: "r(x,y,width,height) - Draw rectangle outline (e.g., r(10,10,100,50))",
-			fillRect: "fr(x,y,width,height) - Draw filled rectangle (e.g., fr(10,10,100,50))",
+			fillRect:
+				"fr(x,y,width,height) - Draw filled rectangle (e.g., fr(10,10,100,50))",
 			circle: "c(x,y,radius) - Draw circle outline (e.g., c(100,100,30))",
 			fillCircle: "fc(x,y,radius) - Draw filled circle (e.g., fc(100,100,30))",
 			text: "t(text,x,y) - Draw text (e.g., t(步骤5: 产品网格区域2,100,30))",
 			path: "p(x1,y1,x2,y2,x3,y3,...) - Draw path/polyline (e.g., p(10,10,50,30,100,10))",
 			clear: "clear() - Clear canvas",
-			action: "action(x,y,width,height,eventName) - Register clickable area (e.g., action(50,50,100,80,buttonClick))",
+			action:
+				"action(x,y,width,height,eventName) - Register clickable area (e.g., action(50,50,100,80,buttonClick))",
 		};
 	}
 }

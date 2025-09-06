@@ -163,12 +163,14 @@ export class CanvasRenderer {
 						styleUpdates.font = this.stateManager.parseFont(value.trim());
 						break;
 					case "fs": // fontSize
-						const currentFont = this.stateManager.currentStyle.font || "16px Arial";
+						const currentFont =
+							this.stateManager.currentStyle.font || "16px Arial";
 						const [, , , fontFamily] = currentFont.split(" ");
 						styleUpdates.font = `${value.trim()}px ${fontFamily || "Arial"}`;
 						break;
 					case "fw": // fontWeight
-						const existingFont = this.stateManager.currentStyle.font || "16px Arial";
+						const existingFont =
+							this.stateManager.currentStyle.font || "16px Arial";
 						const [fontSize, , , fontFamilyName] = existingFont.split(" ");
 						styleUpdates.font = `${value.trim()} ${fontSize} ${fontFamilyName || "Arial"}`;
 						break;
@@ -176,7 +178,9 @@ export class CanvasRenderer {
 					case "bc": // borderColor (could map to strokeColor)
 					case "bo": // borderWidth (could map to lineWidth)
 						// These are extended properties that might not directly map to canvas styles
-						console.info(`Style property "${key}" is not directly supported in canvas rendering`);
+						console.info(
+							`Style property "${key}" is not directly supported in canvas rendering`,
+						);
 						break;
 					default:
 						console.warn(`Unknown style property: ${key}`);
@@ -217,7 +221,12 @@ export class CanvasRenderer {
 			);
 		}
 
-		const [x, y, width, height] = command.args as [number, number, number, number];
+		const [x, y, width, height] = command.args as [
+			number,
+			number,
+			number,
+			number,
+		];
 
 		this.applyStyles();
 		this.ctx.strokeRect(x, y, width, height);
@@ -233,7 +242,12 @@ export class CanvasRenderer {
 			);
 		}
 
-		const [x, y, width, height] = command.args as [number, number, number, number];
+		const [x, y, width, height] = command.args as [
+			number,
+			number,
+			number,
+			number,
+		];
 
 		this.applyStyles();
 		this.ctx.fillRect(x, y, width, height);
@@ -299,7 +313,7 @@ export class CanvasRenderer {
 	private executePathCommand(command: DSLCommand): void {
 		// command.args 现在是一个点的数组 Array<{x: number, y: number}>
 		const points = command.args as Array<{ x: number; y: number }>;
-		
+
 		if (points.length < 2) {
 			throw new Error(
 				`Path command requires at least 2 points, got ${points.length}`,
@@ -343,7 +357,13 @@ export class CanvasRenderer {
 			);
 		}
 
-		const [x, y, width, height, eventName] = command.args as [number, number, number, number, string];
+		const [x, y, width, height, eventName] = command.args as [
+			number,
+			number,
+			number,
+			number,
+			string,
+		];
 
 		const clickableArea: ClickableArea = {
 			x,
@@ -355,7 +375,6 @@ export class CanvasRenderer {
 
 		this.stateManager.addAction(clickableArea);
 	}
-
 
 	/**
 	 * 获取 Canvas 上下文信息（调试用）

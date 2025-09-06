@@ -6,31 +6,38 @@ import * as url from "node:url";
 import express from "express";
 import cors from "cors";
 import { WebSocketServer, WebSocket } from "ws";
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { z } from 'zod';
+import {
+	CallToolRequestSchema,
+	ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 // === Schema Definitions ===
 
 // DrawCanvasArgsSchema: Parameters for drawing on canvas using DSL
 const DrawCanvasArgsSchema = z.object({
-  commands: z.array(z.string()).describe('Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n' +
-                                        'STYLE: s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n' +
-                                        '  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n' +
-                                        'LINE: l(x1,y1,x2,y2)\n' +
-                                        '  - Example: l(50,620,50,820)\n' +
-                                        'RECTANGLE: r(x,y,width,height) | fr(x,y,width,height)\n' +
-                                        '  - Example: r(10,10,100,50) or fr(10,10,100,50)\n' +
-                                        'CIRCLE: c(x,y,radius) | fc(x,y,radius)\n' +
-                                        '  - Example: c(100,100,30) or fc(100,100,30)\n' +
-                                        'TEXT: t(text,x,y)\n' +
-                                        '  - Example: t(Hello World,50,50)\n' +
-                                        'PATH: p(x1,y1,x2,y2,x3,y3,...)\n' +
-                                        '  - Example: p(10,10,50,30,100,10)\n' +
-                                        'UTILITY: clear() | action(x,y,width,height,eventName)\n' +
-                                        '  - Example: action(50,50,100,80,buttonClick)\n' +
-                                        'All parameters are comma-separated, no semicolons. Parameter order is fixed and required.')
+	commands: z
+		.array(z.string())
+		.describe(
+			"Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n" +
+				"STYLE: s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n" +
+				"  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n" +
+				"LINE: l(x1,y1,x2,y2)\n" +
+				"  - Example: l(50,620,50,820)\n" +
+				"RECTANGLE: r(x,y,width,height) | fr(x,y,width,height)\n" +
+				"  - Example: r(10,10,100,50) or fr(10,10,100,50)\n" +
+				"CIRCLE: c(x,y,radius) | fc(x,y,radius)\n" +
+				"  - Example: c(100,100,30) or fc(100,100,30)\n" +
+				"TEXT: t(text,x,y)\n" +
+				"  - Example: t(Hello World,50,50)\n" +
+				"PATH: p(x1,y1,x2,y2,x3,y3,...)\n" +
+				"  - Example: p(10,10,50,30,100,10)\n" +
+				"UTILITY: clear() | action(x,y,width,height,eventName)\n" +
+				"  - Example: action(50,50,100,80,buttonClick)\n" +
+				"All parameters are comma-separated, no semicolons. Parameter order is fixed and required.",
+		),
 });
 
 // Node.js port detection
@@ -89,17 +96,21 @@ class CommandManager {
 
 		this.commands.set(id, command);
 
-		console.log(`📝 Command created: ${id} (${commands.split('\n').length} commands)`);
-		
+		console.log(
+			`📝 Command created: ${id} (${commands.split("\n").length} commands)`,
+		);
+
 		// Immediately broadcast to all connected WebSocket clients
 		const sentCount = this.broadcastCommand(command);
-		
+
 		if (sentCount > 0) {
 			command.status = "sent";
 			this.commands.set(id, command);
 			console.log(`📡 Command broadcast to ${sentCount} WebSocket client(s)`);
 		} else {
-			console.log(`⚠️  No WebSocket clients connected - command remains pending`);
+			console.log(
+				`⚠️  No WebSocket clients connected - command remains pending`,
+			);
 		}
 
 		console.log(`📊 Total commands in memory: ${this.commands.size}`);
@@ -208,7 +219,7 @@ class CommandManager {
 	// Get all pending commands for frontend consumption
 	getPendingCommands(): CanvasCommand[] {
 		return Array.from(this.commands.values())
-			.filter(cmd => cmd.status === "pending")
+			.filter((cmd) => cmd.status === "pending")
 			.sort((a, b) => a.timestamp - b.timestamp); // Oldest first
 	}
 
@@ -216,18 +227,29 @@ class CommandManager {
 	markCommandConsumed(commandId: string): boolean {
 		const command = this.commands.get(commandId);
 		console.log(`🔍 markCommandConsumed: Looking for commandId ${commandId}`);
-		console.log(`🔍 Command found:`, command ? { id: command.id, status: command.status, timestamp: command.timestamp } : 'NOT FOUND');
-		
+		console.log(
+			`🔍 Command found:`,
+			command
+				? {
+						id: command.id,
+						status: command.status,
+						timestamp: command.timestamp,
+					}
+				: "NOT FOUND",
+		);
+
 		if (!command) {
 			console.log(`❌ Command ${commandId} not found in commands map`);
 			return false;
 		}
-		
+
 		if (command.status !== "pending") {
-			console.log(`❌ Command ${commandId} status is '${command.status}', not 'pending'`);
+			console.log(
+				`❌ Command ${commandId} status is '${command.status}', not 'pending'`,
+			);
 			return false;
 		}
-		
+
 		command.status = "executed";
 		this.commands.set(commandId, command);
 		console.log(`✅ Command consumed: ${commandId}`);
@@ -241,7 +263,9 @@ class CommandManager {
 		for (const [id, command] of this.commands.entries()) {
 			console.log(`  - ${id.substring(0, 8)}... Status: ${command.status}`);
 			if (command.status === "executed") {
-				console.log(`    ⚠️  Removing executed command: ${id.substring(0, 8)}...`);
+				console.log(
+					`    ⚠️  Removing executed command: ${id.substring(0, 8)}...`,
+				);
 				this.commands.delete(id);
 				cleared++;
 			}
@@ -478,13 +502,17 @@ expressApp.get("/", (req, res) => {
 // 404 handler for debugging
 expressApp.use((req, res, next) => {
 	console.log(`🚫 404 Handler: ${req.method} ${req.url} - No route matched`);
-	res.status(404).json({ error: "Route not found", method: req.method, url: req.url });
+	res
+		.status(404)
+		.json({ error: "Route not found", method: req.method, url: req.url });
 });
 
 // Error handler for debugging
 expressApp.use((err: any, req: any, res: any, next: any) => {
 	console.error("💥 Express Error Handler:", err);
-	res.status(500).json({ error: "Internal Server Error", message: err.message });
+	res
+		.status(500)
+		.json({ error: "Internal Server Error", message: err.message });
 });
 
 // Create MCP server and transport
@@ -531,59 +559,61 @@ async function initializeMCPServer() {
 		return {
 			tools: [
 				{
-					name: 'draw_canvas',
-					description: '📝 **Visual Communication Canvas** - A provided drawing canvas for visual communication with users. Use this as a digital sketchpad to draw simple diagrams, sketches, and visual explanations that help communicate ideas more effectively than words alone. ' +
-								'Think of it as a whiteboard or notepad - keep drawings simple and focused on communication rather than creating complex artwork.\n\n' +
-								'🎯 **Best Use Cases:**\n' +
-								'• Quick sketches to explain concepts or processes\n' +
-								'• Simple diagrams (flowcharts, layouts, relationships)\n' +
-								'• Visual annotations and labels\n' +
-								'• Step-by-step illustrations\n' +
-								'• Basic wireframes or mockups\n' +
-								'• Geometric shapes to represent ideas\n\n' +
-								'💡 **Guidelines:**\n' +
-								'• Keep it simple - this is a communication tool, not art creation\n' +
-								'• Use clear, readable text and basic shapes\n' +
-								'• Focus on conveying information rather than aesthetics\n' +
-								'• Think "rough sketch" rather than "polished design"\n\n' +
-								'📐 **Canvas Properties:**\n' +
-								'• Canvas Size: 800 × 500 pixels (width × height)\n' +
-								'• Coordinate System: Top-left (0,0) to bottom-right (800,500)\n' +
-								'• Recommended drawing area: 20-780 pixels (width), 20-480 pixels (height)\n' +
-								'• Use clear, contrasting colors for better readability',
+					name: "draw_canvas",
+					description:
+						"📝 **Visual Communication Canvas** - A provided drawing canvas for visual communication with users. Use this as a digital sketchpad to draw simple diagrams, sketches, and visual explanations that help communicate ideas more effectively than words alone. " +
+						"Think of it as a whiteboard or notepad - keep drawings simple and focused on communication rather than creating complex artwork.\n\n" +
+						"🎯 **Best Use Cases:**\n" +
+						"• Quick sketches to explain concepts or processes\n" +
+						"• Simple diagrams (flowcharts, layouts, relationships)\n" +
+						"• Visual annotations and labels\n" +
+						"• Step-by-step illustrations\n" +
+						"• Basic wireframes or mockups\n" +
+						"• Geometric shapes to represent ideas\n\n" +
+						"💡 **Guidelines:**\n" +
+						"• Keep it simple - this is a communication tool, not art creation\n" +
+						"• Use clear, readable text and basic shapes\n" +
+						"• Focus on conveying information rather than aesthetics\n" +
+						'• Think "rough sketch" rather than "polished design"\n\n' +
+						"📐 **Canvas Properties:**\n" +
+						"• Canvas Size: 800 × 500 pixels (width × height)\n" +
+						"• Coordinate System: Top-left (0,0) to bottom-right (800,500)\n" +
+						"• Recommended drawing area: 20-780 pixels (width), 20-480 pixels (height)\n" +
+						"• Use clear, contrasting colors for better readability",
 					inputSchema: {
 						type: "object",
 						properties: {
 							commands: {
 								type: "array",
 								items: {
-									type: "string"
+									type: "string",
 								},
-								description: "Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n" +
-											"STYLE COMMANDS:\n" +
-											"• s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n" +
-											"  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n" +
-											"  - All parameters optional after strokeColor, use empty string to skip: s(#FF0000,,2)\n\n" +
-											"DRAWING COMMANDS:\n" +
-											"• l(x1,y1,x2,y2) - Draw line from (x1,y1) to (x2,y2)\n" +
-											"• r(x,y,width,height) - Draw rectangle outline at (x,y) with dimensions\n" +
-											"• fr(x,y,width,height) - Draw filled rectangle at (x,y) with dimensions\n" +
-											"• c(x,y,radius) - Draw circle outline centered at (x,y) with radius\n" +
-											"• fc(x,y,radius) - Draw filled circle centered at (x,y) with radius\n" +
-											"• t(text,x,y) - Draw text at position (x,y)\n" +
-											"• p(x1,y1,x2,y2,x3,y3,...) - Draw path connecting multiple points (even number of coordinates)\n\n" +
-											"UTILITY COMMANDS:\n" +
-											"• clear() - Clear the entire canvas\n" +
-											"• action(x,y,width,height,eventName) - Create clickable area for interactivity\n\n" +
-											"EXAMPLES:\n" +
-											"[\"clear()\", \"s(#FF0000,#0000FF,2,20,bold,#FFFFFF,#000000,1)\", \"t(Hello World,50,50)\", \"fr(50,80,200,100)\"]"
-							}
+								description:
+									"Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n" +
+									"STYLE COMMANDS:\n" +
+									"• s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n" +
+									"  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n" +
+									"  - All parameters optional after strokeColor, use empty string to skip: s(#FF0000,,2)\n\n" +
+									"DRAWING COMMANDS:\n" +
+									"• l(x1,y1,x2,y2) - Draw line from (x1,y1) to (x2,y2)\n" +
+									"• r(x,y,width,height) - Draw rectangle outline at (x,y) with dimensions\n" +
+									"• fr(x,y,width,height) - Draw filled rectangle at (x,y) with dimensions\n" +
+									"• c(x,y,radius) - Draw circle outline centered at (x,y) with radius\n" +
+									"• fc(x,y,radius) - Draw filled circle centered at (x,y) with radius\n" +
+									"• t(text,x,y) - Draw text at position (x,y)\n" +
+									"• p(x1,y1,x2,y2,x3,y3,...) - Draw path connecting multiple points (even number of coordinates)\n\n" +
+									"UTILITY COMMANDS:\n" +
+									"• clear() - Clear the entire canvas\n" +
+									"• action(x,y,width,height,eventName) - Create clickable area for interactivity\n\n" +
+									"EXAMPLES:\n" +
+									'["clear()", "s(#FF0000,#0000FF,2,20,bold,#FFFFFF,#000000,1)", "t(Hello World,50,50)", "fr(50,80,200,100)"]',
+							},
 						},
 						required: ["commands"],
-						additionalProperties: false
-					}
-				}
-			]
+						additionalProperties: false,
+					},
+				},
+			],
 		};
 	});
 
@@ -593,18 +623,19 @@ async function initializeMCPServer() {
 			const { name, arguments: args } = request.params;
 
 			switch (name) {
-				case 'draw_canvas':
+				case "draw_canvas":
 					return await handleDrawCanvas(args);
 				default:
 					throw new Error(`Unknown tool: ${name}`);
 			}
 		} catch (error) {
-			console.error('Error calling tool:', error);
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+			console.error("Error calling tool:", error);
+			const errorMessage =
+				error instanceof Error ? error.message : "Unknown error occurred";
 
 			return {
-				content: [{ type: 'text', text: `Error: ${errorMessage}` }],
-				isError: true
+				content: [{ type: "text", text: `Error: ${errorMessage}` }],
+				isError: true,
 			};
 		}
 	});
@@ -625,58 +656,66 @@ async function initializeMCPServer() {
 				content: [
 					{
 						type: "text",
-						text: `❌ DSL Validation Errors:\n\n${validation.errors.join('\n')}\n\n📋 **DSL Syntax Reference (New Format):**\n` +
-							  `- Commands: s (styles), l (line), r (rectangle), fr (filled rectangle), c (circle), fc (filled circle), t (text), p (path), clear, action\n` +
-							  `- Format: command(param1,param2,param3,...) - ALL COMMA-SEPARATED\n` +
-							  `- Style: s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n` +
-							  `- Line: l(x1,y1,x2,y2)\n` +
-							  `- Rectangle: r(x,y,width,height) or fr(x,y,width,height)\n` +
-							  `- Circle: c(x,y,radius) or fc(x,y,radius)\n` +
-							  `- Text: t(text,x,y) - TEXT COMES FIRST\n` +
-							  `- Path: p(x1,y1,x2,y2,x3,y3,...)\n` +
-							  `- Action: action(x,y,width,height,eventName)\n` +
-							  `- Colors: #RRGGBB hex format recommended\n` +
-							  `- Example: ["clear()", "s(#FF0000,#0000FF,2,20,bold)", "t(Hello,100,50)", "fr(20,80,200,100)"]\n\n⚠️ IMPORTANT: Use COMMAS, not semicolons! Fixed parameter order required.\n\nPlease fix the syntax errors and try again.`
-					}
+						text:
+							`❌ DSL Validation Errors:\n\n${validation.errors.join("\n")}\n\n📋 **DSL Syntax Reference (New Format):**\n` +
+							`- Commands: s (styles), l (line), r (rectangle), fr (filled rectangle), c (circle), fc (filled circle), t (text), p (path), clear, action\n` +
+							`- Format: command(param1,param2,param3,...) - ALL COMMA-SEPARATED\n` +
+							`- Style: s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n` +
+							`- Line: l(x1,y1,x2,y2)\n` +
+							`- Rectangle: r(x,y,width,height) or fr(x,y,width,height)\n` +
+							`- Circle: c(x,y,radius) or fc(x,y,radius)\n` +
+							`- Text: t(text,x,y) - TEXT COMES FIRST\n` +
+							`- Path: p(x1,y1,x2,y2,x3,y3,...)\n` +
+							`- Action: action(x,y,width,height,eventName)\n` +
+							`- Colors: #RRGGBB hex format recommended\n` +
+							`- Example: ["clear()", "s(#FF0000,#0000FF,2,20,bold)", "t(Hello,100,50)", "fr(20,80,200,100)"]\n\n⚠️ IMPORTANT: Use COMMAS, not semicolons! Fixed parameter order required.\n\nPlease fix the syntax errors and try again.`,
+					},
 				],
-				isError: true
+				isError: true,
 			};
 		}
 
 		// Convert commands array to string for storage (maintaining backward compatibility with frontend)
-		const commandsString = commands.join('\n');
-		const commandId = commandManager.addCommand(commandsString, mcpTransport.sessionId);
+		const commandsString = commands.join("\n");
+		const commandId = commandManager.addCommand(
+			commandsString,
+			mcpTransport.sessionId,
+		);
 		const stats = commandManager.getCommandStats();
 		const clientStats = commandManager.getConnectedClientsCount();
-		
+
 		// Commands are now immediately broadcast to connected WebSocket clients
-		const statusMessage = clientStats.websocket > 0 
-			? `📡 Commands broadcast to ${clientStats.websocket} connected client(s)`
-			: `📦 Commands cached - will broadcast when clients connect`;
-		
+		const statusMessage =
+			clientStats.websocket > 0
+				? `📡 Commands broadcast to ${clientStats.websocket} connected client(s)`
+				: `📦 Commands cached - will broadcast when clients connect`;
+
 		const port = await findAvailablePort(3100);
-		
+
 		// Count the number of commands (excluding empty and comment commands)
-		const validCommands = commands.filter(cmd => cmd.trim() && !cmd.trim().startsWith('//'));
+		const validCommands = commands.filter(
+			(cmd) => cmd.trim() && !cmd.trim().startsWith("//"),
+		);
 		const commandCount = validCommands.length;
-		
+
 		return {
 			content: [
 				{
 					type: "text",
-					text: `🎨 **Canvas Drawing Created**\n\n${statusMessage}\n\n` +
-						  `📋 **Command Details:**\n` +
-						  `- Command ID: ${commandId}\n` +
-						  `- Total Commands: ${commandCount}\n` +
-						  `- Delivery: ${clientStats.websocket > 0 ? 'Sent via WebSocket' : 'Cached for next connection'}\n` +
-						  `- Real-time execution with WebSocket protocol\n\n` +
-						  `📝 **Commands Executed:**\n\`\`\`json\n${JSON.stringify(commands, null, 2)}\n\`\`\`\n\n` +
-						  `📊 **System Stats:** ${stats.total} total commands, ${stats.pending} pending, ${stats.executed} executed\n\n` +
-						  `🌐 **View Your Drawing:** http://localhost:${port}\n\n` +
-						  `The canvas drawing has been created and ${clientStats.websocket > 0 ? 'immediately sent to connected browsers' : 'cached for immediate delivery when you open the page'}. ` +
-						  `All communication now happens in real-time via WebSocket for optimal performance.`
-				}
-			]
+					text:
+						`🎨 **Canvas Drawing Created**\n\n${statusMessage}\n\n` +
+						`📋 **Command Details:**\n` +
+						`- Command ID: ${commandId}\n` +
+						`- Total Commands: ${commandCount}\n` +
+						`- Delivery: ${clientStats.websocket > 0 ? "Sent via WebSocket" : "Cached for next connection"}\n` +
+						`- Real-time execution with WebSocket protocol\n\n` +
+						`📝 **Commands Executed:**\n\`\`\`json\n${JSON.stringify(commands, null, 2)}\n\`\`\`\n\n` +
+						`📊 **System Stats:** ${stats.total} total commands, ${stats.pending} pending, ${stats.executed} executed\n\n` +
+						`🌐 **View Your Drawing:** http://localhost:${port}\n\n` +
+						`The canvas drawing has been created and ${clientStats.websocket > 0 ? "immediately sent to connected browsers" : "cached for immediate delivery when you open the page"}. ` +
+						`All communication now happens in real-time via WebSocket for optimal performance.`,
+				},
+			],
 		};
 	}
 
@@ -744,23 +783,27 @@ async function startServer() {
 			try {
 				const message = JSON.parse(data.toString());
 				console.log(`📨 WebSocket message from ${clientId}:`, message);
-				
+
 				switch (message.type) {
 					case "command-status":
 						const { commandId, status, error } = message;
 						commandManager.updateCommandStatus(commandId, status, error);
 						break;
-						
+
 					case "command-consumed":
-						const consumed = commandManager.markCommandConsumed(message.commandId);
+						const consumed = commandManager.markCommandConsumed(
+							message.commandId,
+						);
 						// Send acknowledgment back to client
-						ws.send(JSON.stringify({
-							type: "consume-ack",
-							commandId: message.commandId,
-							success: consumed
-						}));
+						ws.send(
+							JSON.stringify({
+								type: "consume-ack",
+								commandId: message.commandId,
+								success: consumed,
+							}),
+						);
 						break;
-						
+
 					default:
 						console.log(`❓ Unknown WebSocket message type: ${message.type}`);
 				}

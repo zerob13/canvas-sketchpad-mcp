@@ -158,7 +158,6 @@ export class DOMManager {
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 	}
 
-
 	// Add command to history display
 	addCommandToHistory(
 		command: string,

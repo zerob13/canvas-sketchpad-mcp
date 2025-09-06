@@ -44,12 +44,13 @@ export type CommandType =
 
 export const ParseErrorType = {
 	SYNTAX_ERROR: "SYNTAX_ERROR",
-	INVALID_COMMAND: "INVALID_COMMAND", 
+	INVALID_COMMAND: "INVALID_COMMAND",
 	INVALID_PARAMETER: "INVALID_PARAMETER",
 	TYPE_MISMATCH: "TYPE_MISMATCH",
 } as const;
 
-export type ParseErrorTypeValue = typeof ParseErrorType[keyof typeof ParseErrorType];
+export type ParseErrorTypeValue =
+	(typeof ParseErrorType)[keyof typeof ParseErrorType];
 
 export class ParseError extends Error {
 	constructor(

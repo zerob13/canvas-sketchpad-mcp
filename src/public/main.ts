@@ -33,16 +33,16 @@ class CanvasMCPApp {
 				this.stateManager,
 			);
 
-		// 设置事件监听
-		this.setupEventListeners();
+			// 设置事件监听
+			this.setupEventListeners();
 
-		// 设置手动测试功能
-		this.setupManualTesting();
+			// 设置手动测试功能
+			this.setupManualTesting();
 
-		// 开始轮询MCP命令
-		this.startMCPPolling();
+			// 开始轮询MCP命令
+			this.startMCPPolling();
 
-		console.log("✅ Canvas MCP Application initialized successfully");
+			console.log("✅ Canvas MCP Application initialized successfully");
 		} catch (error) {
 			console.error("❌ Failed to initialize Canvas MCP Application:", error);
 			if (this.domManager) {
@@ -119,7 +119,9 @@ class CanvasMCPApp {
 		}
 
 		// 支持键盘快捷键 Ctrl+Enter 执行命令
-		const inputArea = document.getElementById("manual-dsl-input") as HTMLTextAreaElement;
+		const inputArea = document.getElementById(
+			"manual-dsl-input",
+		) as HTMLTextAreaElement;
 		if (inputArea) {
 			inputArea.addEventListener("keydown", (event) => {
 				if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -131,7 +133,6 @@ class CanvasMCPApp {
 	}
 
 	private startMCPPolling(): void {
-
 		// 检查是否有待执行的命令（从localStorage或其他持久化存储）
 		this.checkForPendingCommands();
 
@@ -146,10 +147,10 @@ class CanvasMCPApp {
 
 	private startWebSocketConnection(): void {
 		try {
-			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 			const host = window.location.host;
 			const wsUrl = `${protocol}//${host}/ws`;
-			
+
 			const websocket = new WebSocket(wsUrl);
 
 			websocket.onopen = () => {
@@ -172,38 +173,50 @@ class CanvasMCPApp {
 							try {
 								// 执行命令
 								this.executeCommand(data.data.commands);
-								
+
 								// 发送消费确认 (通过 WebSocket)
 								this.sendConsumeConfirmation(data.data.id);
-								
-								console.log(`✅ Command executed and consumed: ${data.data.id}`);
+
+								console.log(
+									`✅ Command executed and consumed: ${data.data.id}`,
+								);
 							} catch (error) {
-								console.error(`❌ Failed to execute command ${data.data.id}:`, error);
+								console.error(
+									`❌ Failed to execute command ${data.data.id}:`,
+									error,
+								);
 								// 即使失败也发送消费确认，避免重复执行
 								this.sendConsumeConfirmation(data.data.id);
 							}
 							break;
-						
+
 						case "consume-ack":
 							console.log("✅ Server acknowledged command consumption:", data);
 							break;
-						
+
 						case "connection":
 							console.log("🔗 WebSocket connection confirmed:", data.data);
 							break;
-						
+
 						default:
-							console.debug("Ignoring unknown WebSocket message type:", data.type);
+							console.debug(
+								"Ignoring unknown WebSocket message type:",
+								data.type,
+							);
 							break;
 					}
 				} catch (error) {
-					console.error("Failed to parse WebSocket message:", error, event.data);
+					console.error(
+						"Failed to parse WebSocket message:",
+						error,
+						event.data,
+					);
 				}
 			};
 
 			websocket.onclose = () => {
 				console.log("WebSocket connection closed");
-				
+
 				// 尝试重新连接
 				setTimeout(() => {
 					console.log("🔄 Attempting to reconnect WebSocket...");
@@ -239,7 +252,7 @@ class CanvasMCPApp {
 					type: "command-status",
 					commandId,
 					status,
-					error
+					error,
 				};
 				websocket.send(JSON.stringify(message));
 			} else {
@@ -267,12 +280,14 @@ class CanvasMCPApp {
 		if (websocket && websocket.readyState === WebSocket.OPEN) {
 			const message = {
 				type: "command-consumed",
-				commandId
+				commandId,
 			};
 			websocket.send(JSON.stringify(message));
 			console.log(`📤 Sent consume confirmation for command: ${commandId}`);
 		} else {
-			console.warn("❌ Cannot send consume confirmation - WebSocket not available");
+			console.warn(
+				"❌ Cannot send consume confirmation - WebSocket not available",
+			);
 		}
 	}
 
@@ -347,7 +362,9 @@ class CanvasMCPApp {
 
 	// 消费服务器缓存的命令 - 现在通过 WebSocket 实时接收
 	public async consumeCachedCommands(): Promise<void> {
-		console.log("🔄 WebSocket-based command consumption ready - waiting for real-time commands...");
+		console.log(
+			"🔄 WebSocket-based command consumption ready - waiting for real-time commands...",
+		);
 		// 不再需要主动获取，所有命令都通过 WebSocket 实时推送
 	}
 
@@ -402,7 +419,9 @@ class CanvasMCPApp {
 	 * 执行手动输入的DSL命令
 	 */
 	private executeManualCommands(): void {
-		const inputArea = document.getElementById("manual-dsl-input") as HTMLTextAreaElement;
+		const inputArea = document.getElementById(
+			"manual-dsl-input",
+		) as HTMLTextAreaElement;
 		if (!inputArea) {
 			console.warn("Manual DSL input area not found");
 			return;
@@ -410,13 +429,19 @@ class CanvasMCPApp {
 
 		const commands = inputArea.value.trim();
 		if (!commands) {
-			this.domManager.showMessage("Please enter some DSL commands to execute", "info");
+			this.domManager.showMessage(
+				"Please enter some DSL commands to execute",
+				"info",
+			);
 			return;
 		}
 
 		console.log("🧪 Executing manual DSL commands:", commands);
 		this.executeCommand(commands);
-		this.domManager.showMessage("Manual commands executed successfully", "success");
+		this.domManager.showMessage(
+			"Manual commands executed successfully",
+			"success",
+		);
 	}
 
 	/**
@@ -495,7 +520,9 @@ l(410,190,410,220)`;
 	 * 设置手动输入区域的内容
 	 */
 	private setManualInput(content: string): void {
-		const inputArea = document.getElementById("manual-dsl-input") as HTMLTextAreaElement;
+		const inputArea = document.getElementById(
+			"manual-dsl-input",
+		) as HTMLTextAreaElement;
 		if (inputArea) {
 			inputArea.value = content;
 			inputArea.focus();
@@ -513,14 +540,14 @@ l(410,190,410,220)`;
 		if (this.pollingInterval) {
 			clearInterval(this.pollingInterval);
 		}
-		
+
 		// 清理WebSocket连接
 		const websocket = (this as any)._websocket;
 		if (websocket) {
 			websocket.close();
 			delete (this as any)._websocket;
 		}
-		
+
 		console.log("🔥 Canvas MCP Application destroyed");
 	}
 
