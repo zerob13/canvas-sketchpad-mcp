@@ -258,7 +258,15 @@ npm start
 
 ## 📝 License
 
-[Your License Here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+MIT License allows you to:
+- ✅ Use the software for commercial purposes
+- ✅ Modify and distribute the software
+- ✅ Use the software privately
+- ✅ Include the software in larger projects
+
+The only requirement is to include the copyright notice and license text in any copy of the software.
 
 ## 🔗 Related Links
 

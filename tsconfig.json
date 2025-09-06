@@ -1,17 +1,17 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "strict": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "downlevelIteration": true,
-    "outDir": "./dist",
-    "types": ["node"]
-  },
-  "include": ["src/index.ts"],
-  "exclude": ["src/public/**/*"]
+	"compilerOptions": {
+		"target": "ES2020",
+		"module": "ESNext",
+		"moduleResolution": "node",
+		"strict": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"downlevelIteration": true,
+		"outDir": "./dist",
+		"types": ["node"]
+	},
+	"include": ["src/index.ts"],
+	"exclude": ["src/public/**/*"]
 }
