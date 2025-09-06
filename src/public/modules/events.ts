@@ -175,7 +175,13 @@ export class EventsManager {
 			return;
 		}
 
-		console.log("📨 Received window message:", event.data);
+		// 只处理我们期望的 MCP 消息类型，忽略其他消息（如 MetaMask、其他扩展等）
+		if (!event.data.type || !event.data.type.startsWith("mcp-")) {
+			// 不输出日志以避免干扰，因为浏览器中有很多其他消息
+			return;
+		}
+
+		console.log("📨 Received MCP window message:", event.data);
 
 		switch (event.data.type) {
 			case "mcp-canvas-command":
@@ -191,7 +197,7 @@ export class EventsManager {
 				this.sendStatusUpdate();
 				break;
 			default:
-				console.log("Unknown message type:", event.data.type);
+				console.debug("Unknown MCP message type:", event.data.type);
 		}
 	}
 

@@ -42,17 +42,19 @@ export type CommandType =
 	| "clear" // clear()
 	| "action"; // action(50,50;100,80;click)
 
-export enum ParseErrorType {
-	SYNTAX_ERROR = "SYNTAX_ERROR",
-	INVALID_COMMAND = "INVALID_COMMAND",
-	INVALID_PARAMETER = "INVALID_PARAMETER",
-	TYPE_MISMATCH = "TYPE_MISMATCH",
-}
+export const ParseErrorType = {
+	SYNTAX_ERROR: "SYNTAX_ERROR",
+	INVALID_COMMAND: "INVALID_COMMAND", 
+	INVALID_PARAMETER: "INVALID_PARAMETER",
+	TYPE_MISMATCH: "TYPE_MISMATCH",
+} as const;
+
+export type ParseErrorTypeValue = typeof ParseErrorType[keyof typeof ParseErrorType];
 
 export class ParseError extends Error {
 	constructor(
 		message: string,
-		public type: ParseErrorType,
+		public type: ParseErrorTypeValue,
 		public line?: number,
 		public column?: number,
 	) {

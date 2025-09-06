@@ -15,11 +15,22 @@ import { z } from 'zod';
 
 // DrawCanvasArgsSchema: Parameters for drawing on canvas using DSL
 const DrawCanvasArgsSchema = z.object({
-  commands: z.array(z.string()).describe('Array of DSL commands to execute on the canvas. ' +
-                                        'Each command follows the pattern: command(param1;param2;...). ' +
-                                        'Supported commands: s (set styles), l (line), r (rectangle), fr (filled rectangle), ' +
-                                        'c (circle), fc (filled circle), t (text), p (path), clear, action (clickable area). ' +
-                                        'Example: ["s(sc:#FF0000;lw:3)", "l(10,10;100,100)", "fr(50,50;100,80;fc:#0066CC)"]')
+  commands: z.array(z.string()).describe('Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n' +
+                                        'STYLE: s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n' +
+                                        '  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n' +
+                                        'LINE: l(x1,y1,x2,y2)\n' +
+                                        '  - Example: l(50,620,50,820)\n' +
+                                        'RECTANGLE: r(x,y,width,height) | fr(x,y,width,height)\n' +
+                                        '  - Example: r(10,10,100,50) or fr(10,10,100,50)\n' +
+                                        'CIRCLE: c(x,y,radius) | fc(x,y,radius)\n' +
+                                        '  - Example: c(100,100,30) or fc(100,100,30)\n' +
+                                        'TEXT: t(text,x,y)\n' +
+                                        '  - Example: t(Hello World,50,50)\n' +
+                                        'PATH: p(x1,y1,x2,y2,x3,y3,...)\n' +
+                                        '  - Example: p(10,10,50,30,100,10)\n' +
+                                        'UTILITY: clear() | action(x,y,width,height,eventName)\n' +
+                                        '  - Example: action(50,50,100,80,buttonClick)\n' +
+                                        'All parameters are comma-separated, no semicolons. Parameter order is fixed and required.')
 });
 
 // Node.js port detection
@@ -78,10 +89,20 @@ class CommandManager {
 
 		this.commands.set(id, command);
 
-		// Commands remain pending until consumed by frontend
-		// Don't change status here - let frontend consume and confirm
-		console.log(`📝 Command queued: ${id} (${commands.split('\n').length} commands)`);
+		console.log(`📝 Command created: ${id} (${commands.split('\n').length} commands)`);
+		
+		// Immediately broadcast to all connected WebSocket clients
+		const sentCount = this.broadcastCommand(command);
+		
+		if (sentCount > 0) {
+			command.status = "sent";
+			this.commands.set(id, command);
+			console.log(`📡 Command broadcast to ${sentCount} WebSocket client(s)`);
+		} else {
+			console.log(`⚠️  No WebSocket clients connected - command remains pending`);
+		}
 
+		console.log(`📊 Total commands in memory: ${this.commands.size}`);
 		return id;
 	}
 
@@ -194,27 +215,43 @@ class CommandManager {
 	// Mark command as consumed and executed
 	markCommandConsumed(commandId: string): boolean {
 		const command = this.commands.get(commandId);
-		if (command && command.status === "pending") {
-			command.status = "executed";
-			this.commands.set(commandId, command);
-			console.log(`✅ Command consumed: ${commandId}`);
-			return true;
+		console.log(`🔍 markCommandConsumed: Looking for commandId ${commandId}`);
+		console.log(`🔍 Command found:`, command ? { id: command.id, status: command.status, timestamp: command.timestamp } : 'NOT FOUND');
+		
+		if (!command) {
+			console.log(`❌ Command ${commandId} not found in commands map`);
+			return false;
 		}
-		return false;
+		
+		if (command.status !== "pending") {
+			console.log(`❌ Command ${commandId} status is '${command.status}', not 'pending'`);
+			return false;
+		}
+		
+		command.status = "executed";
+		this.commands.set(commandId, command);
+		console.log(`✅ Command consumed: ${commandId}`);
+		return true;
 	}
 
 	// Clear all consumed commands
 	clearConsumedCommands(): number {
 		let cleared = 0;
+		console.log(`🧹 Checking for consumed commands to clear...`);
 		for (const [id, command] of this.commands.entries()) {
+			console.log(`  - ${id.substring(0, 8)}... Status: ${command.status}`);
 			if (command.status === "executed") {
+				console.log(`    ⚠️  Removing executed command: ${id.substring(0, 8)}...`);
 				this.commands.delete(id);
 				cleared++;
 			}
 		}
 		if (cleared > 0) {
 			console.log(`🧹 Cleared ${cleared} consumed commands`);
+		} else {
+			console.log(`🧹 No consumed commands to clear`);
 		}
+		console.log(`📊 Commands remaining: ${this.commands.size}`);
 		return cleared;
 	}
 
@@ -398,6 +435,12 @@ const expressApp = express();
 expressApp.use(cors());
 expressApp.use(express.json());
 
+// Debug middleware to log all requests
+expressApp.use((req, res, next) => {
+	console.log(`📋 Express Request: ${req.method} ${req.url} - Body:`, req.body);
+	next();
+});
+
 // Static file serving middleware
 expressApp.use(express.static(path.join(process.cwd(), "src/public")));
 
@@ -425,48 +468,23 @@ expressApp.get("/stats", (req, res) => {
 	res.json({ stats, recentCommands });
 });
 
-// Get pending commands for frontend consumption
-expressApp.get("/commands/pending", (req, res) => {
-	try {
-		const pendingCommands = commandManager.getPendingCommands();
-		res.json({ 
-			success: true, 
-			commands: pendingCommands.map(cmd => ({
-				id: cmd.id,
-				commands: cmd.commands,
-				timestamp: cmd.timestamp
-			}))
-		});
-	} catch (error) {
-		console.error("Error getting pending commands:", error);
-		res.status(500).json({ success: false, error: "Failed to get pending commands" });
-	}
-});
-
-// Mark command as consumed
-expressApp.post("/commands/consume", async (req, res) => {
-	try {
-		const { commandId } = req.body;
-		if (!commandId) {
-			res.status(400).json({ success: false, error: "Command ID is required" });
-			return;
-		}
-
-		const consumed = commandManager.markCommandConsumed(commandId);
-		if (consumed) {
-			res.json({ success: true, message: "Command marked as consumed" });
-		} else {
-			res.status(404).json({ success: false, error: "Command not found or already consumed" });
-		}
-	} catch (error) {
-		console.error("Error consuming command:", error);
-		res.status(500).json({ success: false, error: "Failed to consume command" });
-	}
-});
+// HTTP endpoints removed - all command handling now via WebSocket
 
 // Serve the main page for root requests
 expressApp.get("/", (req, res) => {
 	res.sendFile(path.join(process.cwd(), "src/public/index.html"));
+});
+
+// 404 handler for debugging
+expressApp.use((req, res, next) => {
+	console.log(`🚫 404 Handler: ${req.method} ${req.url} - No route matched`);
+	res.status(404).json({ error: "Route not found", method: req.method, url: req.url });
+});
+
+// Error handler for debugging
+expressApp.use((err: any, req: any, res: any, next: any) => {
+	console.error("💥 Express Error Handler:", err);
+	res.status(500).json({ error: "Internal Server Error", message: err.message });
 });
 
 // Create MCP server and transport
@@ -527,11 +545,24 @@ async function initializeMCPServer() {
 								items: {
 									type: "string"
 								},
-								description: "Array of DSL commands to execute on the canvas. " +
-											"Each command follows the pattern: command(param1;param2;...). " +
-											"Supported commands: s (set styles), l (line), r (rectangle), fr (filled rectangle), " +
-											"c (circle), fc (filled circle), t (text), p (path), clear, action (clickable area). " +
-											"Example: [\"s(sc:#FF0000;lw:3)\", \"l(10,10;100,100)\", \"fr(50,50;100,80;fc:#0066CC)\"]"
+								description: "Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n" +
+											"STYLE COMMANDS:\n" +
+											"• s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n" +
+											"  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n" +
+											"  - All parameters optional after strokeColor, use empty string to skip: s(#FF0000,,2)\n\n" +
+											"DRAWING COMMANDS:\n" +
+											"• l(x1,y1,x2,y2) - Draw line from (x1,y1) to (x2,y2)\n" +
+											"• r(x,y,width,height) - Draw rectangle outline at (x,y) with dimensions\n" +
+											"• fr(x,y,width,height) - Draw filled rectangle at (x,y) with dimensions\n" +
+											"• c(x,y,radius) - Draw circle outline centered at (x,y) with radius\n" +
+											"• fc(x,y,radius) - Draw filled circle centered at (x,y) with radius\n" +
+											"• t(text,x,y) - Draw text at position (x,y)\n" +
+											"• p(x1,y1,x2,y2,x3,y3,...) - Draw path connecting multiple points (even number of coordinates)\n\n" +
+											"UTILITY COMMANDS:\n" +
+											"• clear() - Clear the entire canvas\n" +
+											"• action(x,y,width,height,eventName) - Create clickable area for interactivity\n\n" +
+											"EXAMPLES:\n" +
+											"[\"clear()\", \"s(#FF0000,#0000FF,2,20,bold,#FFFFFF,#000000,1)\", \"t(Hello World,50,50)\", \"fr(50,80,200,100)\"]"
 							}
 						},
 						required: ["commands"],
@@ -598,8 +629,10 @@ async function initializeMCPServer() {
 		const stats = commandManager.getCommandStats();
 		const clientStats = commandManager.getConnectedClientsCount();
 		
-		// Commands are now cached in memory until consumed by frontend
-		const statusMessage = `📦 Commands cached in memory for frontend consumption`;
+		// Commands are now immediately broadcast to connected WebSocket clients
+		const statusMessage = clientStats.websocket > 0 
+			? `📡 Commands broadcast to ${clientStats.websocket} connected client(s)`
+			: `📦 Commands cached - will broadcast when clients connect`;
 		
 		const port = await findAvailablePort(3100);
 		
@@ -611,17 +644,17 @@ async function initializeMCPServer() {
 			content: [
 				{
 					type: "text",
-					text: `🎨 **Canvas Drawing Queued**\n\n${statusMessage}\n\n` +
+					text: `🎨 **Canvas Drawing Created**\n\n${statusMessage}\n\n` +
 						  `📋 **Command Details:**\n` +
 						  `- Command ID: ${commandId}\n` +
 						  `- Total Commands: ${commandCount}\n` +
-						  `- Status: Cached and waiting for frontend consumption\n` +
-						  `- Commands will persist until executed by the canvas\n\n` +
-						  `📝 **Commands Queued:**\n\`\`\`json\n${JSON.stringify(commands, null, 2)}\n\`\`\`\n\n` +
+						  `- Delivery: ${clientStats.websocket > 0 ? 'Sent via WebSocket' : 'Cached for next connection'}\n` +
+						  `- Real-time execution with WebSocket protocol\n\n` +
+						  `📝 **Commands Executed:**\n\`\`\`json\n${JSON.stringify(commands, null, 2)}\n\`\`\`\n\n` +
 						  `📊 **System Stats:** ${stats.total} total commands, ${stats.pending} pending, ${stats.executed} executed\n\n` +
 						  `🌐 **View Your Drawing:** http://localhost:${port}\n\n` +
-						  `The canvas commands have been cached in server memory. When you open the canvas page, ` +
-						  `it will automatically fetch and execute all pending commands. Commands remain cached until successfully executed.`
+						  `The canvas drawing has been created and ${clientStats.websocket > 0 ? 'immediately sent to connected browsers' : 'cached for immediate delivery when you open the page'}. ` +
+						  `All communication now happens in real-time via WebSocket for optimal performance.`
 				}
 			]
 		};
@@ -642,6 +675,7 @@ async function startServer() {
 	const server = createServer(
 		async (req: IncomingMessage, res: ServerResponse) => {
 			const urlPath = req.url ? url.parse(req.url).pathname : "";
+			console.log(`🌐 HTTP Server Request: ${req.method} ${urlPath}`);
 
 			// Handle MCP endpoints directly with native HTTP
 			if (urlPath === "/mcp") {
@@ -667,6 +701,7 @@ async function startServer() {
 			}
 
 			// For all other requests, pass to Express
+			console.log(`➡️ Passing to Express: ${req.method} ${urlPath}`);
 			expressApp(req as any, res as any);
 		},
 	);
@@ -685,12 +720,29 @@ async function startServer() {
 		(ws as any).clientId = clientId;
 
 		ws.on("message", (data) => {
-			// Handle incoming WebSocket messages (e.g., status updates)
+			// Handle incoming WebSocket messages (e.g., status updates, consume confirmations)
 			try {
 				const message = JSON.parse(data.toString());
-				if (message.type === "command-status") {
-					const { commandId, status, error } = message;
-					commandManager.updateCommandStatus(commandId, status, error);
+				console.log(`📨 WebSocket message from ${clientId}:`, message);
+				
+				switch (message.type) {
+					case "command-status":
+						const { commandId, status, error } = message;
+						commandManager.updateCommandStatus(commandId, status, error);
+						break;
+						
+					case "command-consumed":
+						const consumed = commandManager.markCommandConsumed(message.commandId);
+						// Send acknowledgment back to client
+						ws.send(JSON.stringify({
+							type: "consume-ack",
+							commandId: message.commandId,
+							success: consumed
+						}));
+						break;
+						
+					default:
+						console.log(`❓ Unknown WebSocket message type: ${message.type}`);
 				}
 			} catch (error) {
 				console.error("Failed to parse WebSocket message:", error);

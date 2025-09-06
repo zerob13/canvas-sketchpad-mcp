@@ -90,15 +90,23 @@
                     <h2 class="text-xl font-semibold text-gray-800 mb-4">📚 DSL Reference</h2>
                     
                     <div class="text-xs space-y-1">
-                        <div class="grid grid-cols-1 gap-2 font-mono">
-                            <div><strong>Style:</strong> <code class="text-blue-600">s(sc:#FF0000;lw:3)</code></div>
-                            <div><strong>Line:</strong> <code class="text-blue-600">l(10,10;100,100)</code></div>
-                            <div><strong>Rectangle:</strong> <code class="text-blue-600">r(50,50;100,80)</code></div>
-                            <div><strong>Filled Rect:</strong> <code class="text-blue-600">fr(50,50;100,80)</code></div>
-                            <div><strong>Circle:</strong> <code class="text-blue-600">c(200,200;50)</code></div>
-                            <div><strong>Text:</strong> <code class="text-blue-600">t(50,60;Hello!)</code></div>
-                            <div><strong>Action:</strong> <code class="text-blue-600">action(x,y;w,h;event)</code></div>
-                            <div><strong>Clear:</strong> <code class="text-blue-600">clear()</code></div>
+                        <div class="grid grid-cols-1 gap-1 font-mono">
+                            <div class="mb-1"><strong>Style Properties:</strong></div>
+                            <div class="text-xs pl-2">
+                                <code class="text-blue-600">s(sc:#FF0000;fc:#0000FF;lw:3;fs:16;fw:bold;bg:#FFF;bc:#000;bo:1)</code><br>
+                                <span class="text-gray-500">sc:stroke fc:fill lw:lineWidth fs:fontSize fw:fontWeight<br>
+                                bg:background bc:borderColor bo:borderWidth</span>
+                            </div>
+                            <div class="mt-2"><strong>Drawing Commands:</strong></div>
+                            <div class="text-xs pl-2 space-y-1">
+                                <div><strong>Line:</strong> <code class="text-blue-600">l(x1,y1;x2,y2)</code></div>
+                                <div><strong>Rectangle:</strong> <code class="text-blue-600">r(x,y;w,h)</code> | <code class="text-blue-600">fr(x,y;w,h)</code></div>
+                                <div><strong>Circle:</strong> <code class="text-blue-600">c(x,y;radius)</code> | <code class="text-blue-600">fc(x,y;radius)</code></div>
+                                <div><strong>Text:</strong> <code class="text-blue-600">t(x,y;text content)</code></div>
+                                <div><strong>Path:</strong> <code class="text-blue-600">p(x1,y1;x2,y2;...)</code></div>
+                                <div><strong>Clear:</strong> <code class="text-blue-600">clear()</code></div>
+                                <div><strong>Action:</strong> <code class="text-blue-600">action(x,y;w,h;eventName)</code></div>
+                            </div>
                         </div>
                     </div>
                     

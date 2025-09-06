@@ -89,60 +89,93 @@ class CanvasMCPApp {
 		// 检查是否有待执行的命令（从localStorage或其他持久化存储）
 		this.checkForPendingCommands();
 
-		// 启动SSE连接以接收实时MCP命令
-		this.startSSEConnection();
+		// 启动WebSocket连接以接收实时MCP命令
+		this.startWebSocketConnection();
 
 		// 保留定期检查作为后备机制
 		this.pollingInterval = window.setInterval(() => {
 			this.processPendingCommands();
-		}, 5000); // 降低轮询频率，因为主要使用SSE
+		}, 5000); // 降低轮询频率，因为主要使用WebSocket
 	}
 
-	private startSSEConnection(): void {
+	private startWebSocketConnection(): void {
 		try {
-			const eventSource = new EventSource("/sse");
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const host = window.location.host;
+			const wsUrl = `${protocol}//${host}/ws`;
+			
+			const websocket = new WebSocket(wsUrl);
 
-			eventSource.onopen = () => {
-				console.log("✅ SSE connection established");
+			websocket.onopen = () => {
+				console.log("✅ WebSocket connection established");
 			};
 
-			eventSource.onmessage = (event) => {
+			websocket.onmessage = (event) => {
 				try {
 					const data = JSON.parse(event.data);
 
-					if (data.type === "canvas-command") {
-						console.log("📡 Received command via SSE:", data.data);
-						this.executeCommand(data.data.commands);
-
-						// 发送状态更新回服务器
-						this.sendCommandStatus(data.data.id, "executed");
+					// 只处理我们期望的消息类型，忽略其他消息
+					if (!data.type) {
+						console.debug("Ignoring message without type field:", data);
+						return;
 					}
 
-					if (data.type === "connection") {
-						console.log("🔗 SSE connection confirmed:", data.data);
+					switch (data.type) {
+						case "canvas-command":
+							console.log("📡 Received command via WebSocket:", data.data);
+							try {
+								// 执行命令
+								this.executeCommand(data.data.commands);
+								
+								// 发送消费确认 (通过 WebSocket)
+								this.sendConsumeConfirmation(data.data.id);
+								
+								console.log(`✅ Command executed and consumed: ${data.data.id}`);
+							} catch (error) {
+								console.error(`❌ Failed to execute command ${data.data.id}:`, error);
+								// 即使失败也发送消费确认，避免重复执行
+								this.sendConsumeConfirmation(data.data.id);
+							}
+							break;
+						
+						case "consume-ack":
+							console.log("✅ Server acknowledged command consumption:", data);
+							break;
+						
+						case "connection":
+							console.log("🔗 WebSocket connection confirmed:", data.data);
+							break;
+						
+						default:
+							console.debug("Ignoring unknown WebSocket message type:", data.type);
+							break;
 					}
 				} catch (error) {
-					console.error("Failed to parse SSE message:", error, event.data);
+					console.error("Failed to parse WebSocket message:", error, event.data);
 				}
 			};
 
-			eventSource.onerror = (error) => {
-				console.error("SSE connection error:", error);
-
+			websocket.onclose = () => {
+				console.log("WebSocket connection closed");
+				
 				// 尝试重新连接
 				setTimeout(() => {
-					console.log("🔄 Attempting to reconnect SSE...");
-					this.startSSEConnection();
+					console.log("🔄 Attempting to reconnect WebSocket...");
+					this.startWebSocketConnection();
 				}, 3000);
 			};
 
-			// 存储eventSource以便后续清理
-			(this as any)._eventSource = eventSource;
+			websocket.onerror = (error) => {
+				console.error("WebSocket connection error:", error);
+			};
+
+			// 存储websocket以便后续清理
+			(this as any)._websocket = websocket;
 		} catch (error) {
-			console.error("Failed to create SSE connection:", error);
+			console.error("Failed to create WebSocket connection:", error);
 			this.domManager.showMessage(
 				"Failed to connect to MCP server. Using fallback polling.",
-				"error",
+				"warning",
 			);
 		}
 	}
@@ -153,19 +186,47 @@ class CanvasMCPApp {
 		error?: string,
 	): Promise<void> {
 		try {
-			const response = await fetch("/command-status", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ commandId, status, error }),
-			});
+			const websocket = (this as any)._websocket;
+			if (websocket && websocket.readyState === WebSocket.OPEN) {
+				// Send via WebSocket if available
+				const message = {
+					type: "command-status",
+					commandId,
+					status,
+					error
+				};
+				websocket.send(JSON.stringify(message));
+			} else {
+				// Fallback to HTTP if WebSocket is not available
+				const response = await fetch("/command-status", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ commandId, status, error }),
+				});
 
-			if (!response.ok) {
-				console.warn("Failed to send command status:", await response.text());
+				if (!response.ok) {
+					console.warn("Failed to send command status:", await response.text());
+				}
 			}
 		} catch (error) {
 			console.error("Error sending command status:", error);
+		}
+	}
+
+	// 发送命令消费确认 (通过 WebSocket)
+	private sendConsumeConfirmation(commandId: string): void {
+		const websocket = (this as any)._websocket;
+		if (websocket && websocket.readyState === WebSocket.OPEN) {
+			const message = {
+				type: "command-consumed",
+				commandId
+			};
+			websocket.send(JSON.stringify(message));
+			console.log(`📤 Sent consume confirmation for command: ${commandId}`);
+		} else {
+			console.warn("❌ Cannot send consume confirmation - WebSocket not available");
 		}
 	}
 
@@ -238,69 +299,10 @@ class CanvasMCPApp {
 		}
 	}
 
-	// 消费服务器缓存的命令
+	// 消费服务器缓存的命令 - 现在通过 WebSocket 实时接收
 	public async consumeCachedCommands(): Promise<void> {
-		try {
-			console.log("🔄 Checking for cached commands...");
-
-			// 获取pending命令
-			const response = await fetch("/commands/pending");
-			const data = await response.json();
-
-			if (!data.success) {
-				console.error("Failed to get pending commands:", data.error);
-				return;
-			}
-
-			const pendingCommands = data.commands || [];
-			console.log(`📦 Found ${pendingCommands.length} cached commands`);
-
-			if (pendingCommands.length === 0) {
-				return;
-			}
-
-			// 依次执行每个缓存的命令
-			for (const cmd of pendingCommands) {
-				console.log(`⚡ Executing cached command: ${cmd.id}`);
-				
-				try {
-					// 执行命令
-					this.executeCommand(cmd.commands);
-
-					// 标记命令为已消费
-					await fetch("/commands/consume", {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify({ commandId: cmd.id }),
-					});
-
-					console.log(`✅ Command consumed: ${cmd.id}`);
-				} catch (error) {
-					console.error(`❌ Failed to execute cached command ${cmd.id}:`, error);
-					// 即使执行失败，也标记为已消费，避免重复执行
-					await fetch("/commands/consume", {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-						},
-						body: JSON.stringify({ commandId: cmd.id }),
-					});
-				}
-			}
-
-			this.domManager.showMessage(
-				`🎨 Executed ${pendingCommands.length} cached commands`,
-				"success",
-			);
-		} catch (error) {
-			console.error("❌ Failed to consume cached commands:", error);
-			this.domManager.showMessage(
-				"Failed to load cached commands",
-				"error",
-			);
-		}
+		console.log("🔄 WebSocket-based command consumption ready - waiting for real-time commands...");
+		// 不再需要主动获取，所有命令都通过 WebSocket 实时推送
 	}
 
 	private handleCanvasClick(event: MouseEvent): void {
@@ -361,6 +363,14 @@ class CanvasMCPApp {
 		if (this.pollingInterval) {
 			clearInterval(this.pollingInterval);
 		}
+		
+		// 清理WebSocket连接
+		const websocket = (this as any)._websocket;
+		if (websocket) {
+			websocket.close();
+			delete (this as any)._websocket;
+		}
+		
 		console.log("🔥 Canvas MCP Application destroyed");
 	}
 
@@ -392,8 +402,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 		// 监听来自MCP服务器的消息
 		window.addEventListener("message", (event) => {
-			if (event.data && event.data.type === "mcp-canvas-command") {
-				app.executeCommand(event.data.command);
+			// 只处理 MCP 相关的消息，忽略其他消息（如 MetaMask 等浏览器扩展）
+			if (event.data && event.data.type && event.data.type.startsWith("mcp-")) {
+				if (event.data.type === "mcp-canvas-command") {
+					app.executeCommand(event.data.command);
+				}
 			}
 		});
 

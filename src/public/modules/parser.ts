@@ -1,7 +1,7 @@
 // DSL 解析器 - 解析绘图命令语法
 
-import type { DSLCommand, CommandType, ParseErrorType } from "./types.js";
-import { ParseError } from "./types.js";
+import type { DSLCommand, CommandType, ParseErrorTypeValue } from "./types.js";
+import { ParseError, ParseErrorType } from "./types.js";
 
 export class DSLParser {
 	private static readonly COMMAND_REGEX = /^([a-zA-Z]+)\s*\(([^)]*)\)\s*$/;
@@ -132,7 +132,8 @@ export class DSLParser {
 			);
 		}
 
-		const params = paramsStr.split(";").map((p) => p.trim());
+		// 统一使用逗号分隔参数，不再支持分号
+		const params = paramsStr.split(",").map((p) => p.trim());
 
 		switch (commandType) {
 			case "style":
@@ -163,70 +164,98 @@ export class DSLParser {
 	private parseStyleParameters(
 		params: string[],
 		lineNumber: number,
-	): Record<string, string> {
-		const styleProps: Record<string, string> = {};
+	): string[] {
+		// 检查是否是旧的键值对格式（包含冒号）
+		const isKeyValueFormat = params.some(param => param.includes(':'));
+		
+		if (isKeyValueFormat) {
+			// 支持旧的键值对格式：sc:#FF0000,lw:2 等，直接返回参数数组
+			for (const param of params) {
+				const match = param.match(DSLParser.STYLE_PARAM_REGEX);
+				if (!match) {
+					throw new ParseError(
+						`Invalid style parameter: "${param}"`,
+						ParseErrorType.INVALID_PARAMETER,
+						lineNumber,
+					);
+				}
 
-		for (const param of params) {
-			const match = param.match(DSLParser.STYLE_PARAM_REGEX);
-			if (!match) {
+				const [, prop] = match;
+
+				// 验证样式属性
+				if (!["sc", "fc", "lw", "f", "fs", "fw", "bg", "bc", "bo"].includes(prop)) {
+					throw new ParseError(
+						`Unknown style property: "${prop}"`,
+						ParseErrorType.INVALID_PARAMETER,
+						lineNumber,
+					);
+				}
+			}
+			return params;
+		} else {
+			// 新的固定顺序格式：s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)
+			const styleKeys = ["sc", "fc", "lw", "fs", "fw", "bg", "bc", "bo"];
+			
+			if (params.length === 0 || params.length > styleKeys.length) {
 				throw new ParseError(
-					`Invalid style parameter: "${param}"`,
+					`Style command expects 1-${styleKeys.length} parameters in order: strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth`,
 					ParseErrorType.INVALID_PARAMETER,
 					lineNumber,
 				);
 			}
 
-			const [, prop, value] = match;
-
-			// 验证样式属性
-			if (!["sc", "fc", "lw", "f"].includes(prop)) {
-				throw new ParseError(
-					`Unknown style property: "${prop}"`,
-					ParseErrorType.INVALID_PARAMETER,
-					lineNumber,
-				);
+			// 转换为键值对格式数组供渲染器使用
+			const result: string[] = [];
+			for (let i = 0; i < params.length; i++) {
+				const value = params[i].trim();
+				if (value) { // 只有非空值才设置
+					result.push(`${styleKeys[i]}:${value}`);
+				}
 			}
-
-			styleProps[prop] = value.trim();
+			return result;
 		}
-
-		return styleProps;
 	}
 
 	private parseLineParameters(
 		params: string[],
 		lineNumber: number,
 	): [number, number, number, number] {
-		if (params.length !== 2) {
+		// 固定参数顺序：l(x1,y1,x2,y2)
+		if (params.length !== 4) {
 			throw new ParseError(
-				"Line command requires exactly 2 parameters: x1,y1;x2,y2",
+				"Line command requires exactly 4 parameters: x1,y1,x2,y2",
 				ParseErrorType.INVALID_PARAMETER,
 				lineNumber,
 			);
 		}
 
-		const start = this.parseCoordinate(params[0], lineNumber);
-		const end = this.parseCoordinate(params[1], lineNumber);
+		const x1 = this.parseNumber(params[0], lineNumber);
+		const y1 = this.parseNumber(params[1], lineNumber);
+		const x2 = this.parseNumber(params[2], lineNumber);
+		const y2 = this.parseNumber(params[3], lineNumber);
 
-		return [start.x, start.y, end.x, end.y];
+		return [x1, y1, x2, y2];
 	}
 
 	private parseRectParameters(
 		params: string[],
 		lineNumber: number,
 	): [number, number, number, number] {
-		if (params.length !== 2) {
+		// 固定参数顺序：r(x,y,width,height) 或 fr(x,y,width,height)
+		if (params.length !== 4) {
 			throw new ParseError(
-				"Rectangle command requires exactly 2 parameters: x,y;w,h",
+				"Rectangle command requires exactly 4 parameters: x,y,width,height",
 				ParseErrorType.INVALID_PARAMETER,
 				lineNumber,
 			);
 		}
 
-		const position = this.parseCoordinate(params[0], lineNumber);
-		const size = this.parseCoordinate(params[1], lineNumber);
+		const x = this.parseNumber(params[0], lineNumber);
+		const y = this.parseNumber(params[1], lineNumber);
+		const width = this.parseNumber(params[2], lineNumber);
+		const height = this.parseNumber(params[3], lineNumber);
 
-		if (size.x <= 0 || size.y <= 0) {
+		if (width <= 0 || height <= 0) {
 			throw new ParseError(
 				"Rectangle width and height must be positive",
 				ParseErrorType.INVALID_PARAMETER,
@@ -234,23 +263,25 @@ export class DSLParser {
 			);
 		}
 
-		return [position.x, position.y, size.x, size.y];
+		return [x, y, width, height];
 	}
 
 	private parseCircleParameters(
 		params: string[],
 		lineNumber: number,
 	): [number, number, number] {
-		if (params.length !== 2) {
+		// 固定参数顺序：c(x,y,radius) 或 fc(x,y,radius)
+		if (params.length !== 3) {
 			throw new ParseError(
-				"Circle command requires exactly 2 parameters: x,y;radius",
+				"Circle command requires exactly 3 parameters: x,y,radius",
 				ParseErrorType.INVALID_PARAMETER,
 				lineNumber,
 			);
 		}
 
-		const center = this.parseCoordinate(params[0], lineNumber);
-		const radius = this.parseNumber(params[1], lineNumber);
+		const x = this.parseNumber(params[0], lineNumber);
+		const y = this.parseNumber(params[1], lineNumber);
+		const radius = this.parseNumber(params[2], lineNumber);
 
 		if (radius <= 0) {
 			throw new ParseError(
@@ -260,23 +291,25 @@ export class DSLParser {
 			);
 		}
 
-		return [center.x, center.y, radius];
+		return [x, y, radius];
 	}
 
 	private parseTextParameters(
 		params: string[],
 		lineNumber: number,
 	): [number, number, string] {
-		if (params.length !== 2) {
+		// 固定参数顺序：t(text,x,y)
+		if (params.length !== 3) {
 			throw new ParseError(
-				"Text command requires exactly 2 parameters: x,y;text",
+				"Text command requires exactly 3 parameters: text,x,y",
 				ParseErrorType.INVALID_PARAMETER,
 				lineNumber,
 			);
 		}
 
-		const position = this.parseCoordinate(params[0], lineNumber);
-		const text = params[1].trim();
+		const text = params[0].trim();
+		const x = this.parseNumber(params[1], lineNumber);
+		const y = this.parseNumber(params[2], lineNumber);
 
 		if (!text) {
 			throw new ParseError(
@@ -286,16 +319,25 @@ export class DSLParser {
 			);
 		}
 
-		return [position.x, position.y, text];
+		return [x, y, text];
 	}
 
 	private parsePathParameters(
 		params: string[],
 		lineNumber: number,
 	): Array<{ x: number; y: number }> {
-		if (params.length < 2) {
+		// 固定参数顺序：p(x1,y1,x2,y2,x3,y3,...) - 参数数量必须是偶数
+		if (params.length < 4) {
 			throw new ParseError(
-				"Path command requires at least 2 coordinate pairs",
+				"Path command requires at least 4 parameters (minimum 2 points): x1,y1,x2,y2,...",
+				ParseErrorType.INVALID_PARAMETER,
+				lineNumber,
+			);
+		}
+
+		if (params.length % 2 !== 0) {
+			throw new ParseError(
+				"Path command requires an even number of parameters (x,y pairs)",
 				ParseErrorType.INVALID_PARAMETER,
 				lineNumber,
 			);
@@ -303,9 +345,10 @@ export class DSLParser {
 
 		const points: Array<{ x: number; y: number }> = [];
 
-		for (const param of params) {
-			const point = this.parseCoordinate(param, lineNumber);
-			points.push(point);
+		for (let i = 0; i < params.length; i += 2) {
+			const x = this.parseNumber(params[i], lineNumber);
+			const y = this.parseNumber(params[i + 1], lineNumber);
+			points.push({ x, y });
 		}
 
 		return points;
@@ -315,19 +358,22 @@ export class DSLParser {
 		params: string[],
 		lineNumber: number,
 	): [number, number, number, number, string] {
-		if (params.length !== 3) {
+		// 固定参数顺序：action(x,y,width,height,eventName)
+		if (params.length !== 5) {
 			throw new ParseError(
-				"Action command requires exactly 3 parameters: x,y;w,h;eventName",
+				"Action command requires exactly 5 parameters: x,y,width,height,eventName",
 				ParseErrorType.INVALID_PARAMETER,
 				lineNumber,
 			);
 		}
 
-		const position = this.parseCoordinate(params[0], lineNumber);
-		const size = this.parseCoordinate(params[1], lineNumber);
-		const eventName = params[2].trim();
+		const x = this.parseNumber(params[0], lineNumber);
+		const y = this.parseNumber(params[1], lineNumber);
+		const width = this.parseNumber(params[2], lineNumber);
+		const height = this.parseNumber(params[3], lineNumber);
+		const eventName = params[4].trim();
 
-		if (size.x <= 0 || size.y <= 0) {
+		if (width <= 0 || height <= 0) {
 			throw new ParseError(
 				"Action area width and height must be positive",
 				ParseErrorType.INVALID_PARAMETER,
@@ -343,28 +389,9 @@ export class DSLParser {
 			);
 		}
 
-		return [position.x, position.y, size.x, size.y, eventName];
+		return [x, y, width, height, eventName];
 	}
 
-	private parseCoordinate(
-		coordStr: string,
-		lineNumber: number,
-	): { x: number; y: number } {
-		const parts = coordStr.split(",").map((p) => p.trim());
-
-		if (parts.length !== 2) {
-			throw new ParseError(
-				`Invalid coordinate format: "${coordStr}". Expected: "x,y"`,
-				ParseErrorType.INVALID_PARAMETER,
-				lineNumber,
-			);
-		}
-
-		const x = this.parseNumber(parts[0], lineNumber);
-		const y = this.parseNumber(parts[1], lineNumber);
-
-		return { x, y };
-	}
 
 	private parseNumber(numStr: string, lineNumber: number): number {
 		const trimmed = numStr.trim();
@@ -416,20 +443,20 @@ export class DSLParser {
 	}
 
 	/**
-	 * 获取命令提示信息
+	 * 获取命令提示信息 - 新的逗号分隔格式
 	 */
 	public getCommandHelp(): Record<CommandType, string> {
 		return {
-			style: "s(sc:#FF0000;lw:3) - Set drawing styles",
-			line: "l(x1,y1;x2,y2) - Draw a line",
-			rect: "r(x,y;w,h) - Draw rectangle outline",
-			fillRect: "fr(x,y;w,h) - Draw filled rectangle",
-			circle: "c(x,y;radius) - Draw circle outline",
-			fillCircle: "fc(x,y;radius) - Draw filled circle",
-			text: "t(x,y;text) - Draw text",
-			path: "p(x1,y1;x2,y2;...) - Draw path/polyline",
+			style: "s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth) - Set drawing styles (e.g., s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1))",
+			line: "l(x1,y1,x2,y2) - Draw a line (e.g., l(50,620,50,820))",
+			rect: "r(x,y,width,height) - Draw rectangle outline (e.g., r(10,10,100,50))",
+			fillRect: "fr(x,y,width,height) - Draw filled rectangle (e.g., fr(10,10,100,50))",
+			circle: "c(x,y,radius) - Draw circle outline (e.g., c(100,100,30))",
+			fillCircle: "fc(x,y,radius) - Draw filled circle (e.g., fc(100,100,30))",
+			text: "t(text,x,y) - Draw text (e.g., t(步骤5: 产品网格区域2,100,30))",
+			path: "p(x1,y1,x2,y2,x3,y3,...) - Draw path/polyline (e.g., p(10,10,50,30,100,10))",
 			clear: "clear() - Clear canvas",
-			action: "action(x,y;w,h;eventName) - Register clickable area",
+			action: "action(x,y,width,height,eventName) - Register clickable area (e.g., action(50,50,100,80,buttonClick))",
 		};
 	}
 }
