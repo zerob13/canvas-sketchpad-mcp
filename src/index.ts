@@ -831,8 +831,6 @@ async function startServer() {
 	server.listen(port, "localhost", () => {
 		console.log(`🎨 Canvas MCP Service is running at http://localhost:${port}`);
 		console.log(`📡 MCP endpoint available at http://localhost:${port}/mcp`);
-		console.log(`🔌 WebSocket endpoint available at ws://localhost:${port}/ws`);
-		console.log(`📡 SSE endpoint available at http://localhost:${port}/sse`);
 	});
 
 	// Periodic cleanup of old commands, disconnected clients, and inactive sessions
