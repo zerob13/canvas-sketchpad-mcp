@@ -625,12 +625,18 @@ async function initializeMCPServer() {
 				content: [
 					{
 						type: "text",
-						text: `❌ DSL Validation Errors:\n\n${validation.errors.join('\n')}\n\n📋 **DSL Syntax Reference:**\n` +
+						text: `❌ DSL Validation Errors:\n\n${validation.errors.join('\n')}\n\n📋 **DSL Syntax Reference (New Format):**\n` +
 							  `- Commands: s (styles), l (line), r (rectangle), fr (filled rectangle), c (circle), fc (filled circle), t (text), p (path), clear, action\n` +
-							  `- Format: command(param1;param2;...)\n` +
-							  `- Coordinates: x,y\n` +
-							  `- Colors: #RRGGBB or color names\n` +
-							  `- Example: ["s(sc:red;lw:2)", "l(0,0;100,100)", "fr(20,20;60,60;fc:blue)"]\n\nPlease fix the syntax errors and try again.`
+							  `- Format: command(param1,param2,param3,...) - ALL COMMA-SEPARATED\n` +
+							  `- Style: s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n` +
+							  `- Line: l(x1,y1,x2,y2)\n` +
+							  `- Rectangle: r(x,y,width,height) or fr(x,y,width,height)\n` +
+							  `- Circle: c(x,y,radius) or fc(x,y,radius)\n` +
+							  `- Text: t(text,x,y) - TEXT COMES FIRST\n` +
+							  `- Path: p(x1,y1,x2,y2,x3,y3,...)\n` +
+							  `- Action: action(x,y,width,height,eventName)\n` +
+							  `- Colors: #RRGGBB hex format recommended\n` +
+							  `- Example: ["clear()", "s(#FF0000,#0000FF,2,20,bold)", "t(Hello,100,50)", "fr(20,80,200,100)"]\n\n⚠️ IMPORTANT: Use COMMAS, not semicolons! Fixed parameter order required.\n\nPlease fix the syntax errors and try again.`
 					}
 				],
 				isError: true
