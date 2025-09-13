@@ -16,28 +16,71 @@ import { z } from "zod";
 
 // === Schema Definitions ===
 
-// DrawCanvasArgsSchema: Parameters for drawing on canvas using DSL
+// DrawCanvasArgsSchema: Parameters for drawing on canvas using DSL (batch mode)
 const DrawCanvasArgsSchema = z.object({
 	commands: z
 		.array(z.string())
 		.describe(
-			"Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n" +
-				"STYLE: s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n" +
-				"  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n" +
-				"LINE: l(x1,y1,x2,y2)\n" +
-				"  - Example: l(50,620,50,820)\n" +
-				"RECTANGLE: r(x,y,width,height) | fr(x,y,width,height)\n" +
-				"  - Example: r(10,10,100,50) or fr(10,10,100,50)\n" +
-				"CIRCLE: c(x,y,radius) | fc(x,y,radius)\n" +
-				"  - Example: c(100,100,30) or fc(100,100,30)\n" +
-				"TEXT: t(text,x,y)\n" +
-				"  - Example: t(Hello World,50,50)\n" +
-				"PATH: p(x1,y1,x2,y2,x3,y3,...)\n" +
-				"  - Example: p(10,10,50,30,100,10)\n" +
-				"UTILITY: clear() | action(x,y,width,height,eventName)\n" +
-				"  - Example: action(50,50,100,80,buttonClick)\n" +
-				"All parameters are comma-separated, no semicolons. Parameter order is fixed and required.",
+			"Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order."
 		),
+});
+
+// Atomic tool schemas
+const StyleArgsSchema = z.object({
+	strokeColor: z.string().describe("stroke color, e.g., #FF0000 or rgba() or name").optional(),
+	fillColor: z.string().optional(),
+	lineWidth: z.number().positive().optional(),
+	fontSize: z.number().positive().optional(),
+	fontWeight: z.string().optional(),
+	backgroundColor: z.string().optional(),
+	borderColor: z.string().optional(),
+	borderWidth: z.number().nonnegative().optional(),
+});
+
+const LineArgsSchema = z.object({
+	x1: z.number(),
+	y1: z.number(),
+	x2: z.number(),
+	y2: z.number(),
+});
+
+const RectArgsSchema = z.object({
+	x: z.number(),
+	y: z.number(),
+	width: z.number().positive(),
+	height: z.number().positive(),
+});
+
+const CircleArgsSchema = z.object({
+	x: z.number(),
+	y: z.number(),
+	radius: z.number().positive(),
+});
+
+const TextArgsSchema = z.object({
+	text: z.string().min(1),
+	x: z.number(),
+	y: z.number(),
+});
+
+const PathArgsSchema = z.object({
+	points: z
+		.array(
+			z.object({
+				x: z.number(),
+				y: z.number(),
+			}),
+		)
+		.min(2)
+		.describe("List of points to connect in order"),
+});
+
+const ActionArgsSchema = z.object({
+	x: z.number(),
+	y: z.number(),
+	width: z.number().positive(),
+	height: z.number().positive(),
+	eventName: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),
 });
 
 // Node.js port detection
@@ -559,58 +602,152 @@ async function initializeMCPServer() {
 		return {
 			tools: [
 				{
-					name: "draw_canvas",
+					name: "style",
 					description:
-						"📝 **Visual Communication Canvas** - A provided drawing canvas for visual communication with users. Use this as a digital sketchpad to draw simple diagrams, sketches, and visual explanations that help communicate ideas more effectively than words alone. " +
-						"Think of it as a whiteboard or notepad - keep drawings simple and focused on communication rather than creating complex artwork.\n\n" +
-						"🎯 **Best Use Cases:**\n" +
-						"• Quick sketches to explain concepts or processes\n" +
-						"• Simple diagrams (flowcharts, layouts, relationships)\n" +
-						"• Visual annotations and labels\n" +
-						"• Step-by-step illustrations\n" +
-						"• Basic wireframes or mockups\n" +
-						"• Geometric shapes to represent ideas\n\n" +
-						"💡 **Guidelines:**\n" +
-						"• Keep it simple - this is a communication tool, not art creation\n" +
-						"• Use clear, readable text and basic shapes\n" +
-						"• Focus on conveying information rather than aesthetics\n" +
-						'• Think "rough sketch" rather than "polished design"\n\n' +
-						"📐 **Canvas Properties:**\n" +
-						"• Canvas Size: 800 × 500 pixels (width × height)\n" +
-						"• Coordinate System: Top-left (0,0) to bottom-right (800,500)\n" +
-						"• Recommended drawing area: 20-780 pixels (width), 20-480 pixels (height)\n" +
-						"• Use clear, contrasting colors for better readability",
+						"Set drawing styles. Prefer calling before shapes; can be called multiple times.",
 					inputSchema: {
 						type: "object",
 						properties: {
-							commands: {
+							strokeColor: { type: "string" },
+							fillColor: { type: "string" },
+							lineWidth: { type: "number" },
+							fontSize: { type: "number" },
+							fontWeight: { type: "string" },
+							backgroundColor: { type: "string" },
+							borderColor: { type: "string" },
+							borderWidth: { type: "number" },
+						},
+						additionalProperties: false,
+					},
+				},
+				{
+					name: "line",
+					description: "Draw a line from (x1,y1) to (x2,y2).",
+					inputSchema: {
+						type: "object",
+						required: ["x1", "y1", "x2", "y2"],
+						properties: {
+							x1: { type: "number" },
+							y1: { type: "number" },
+							x2: { type: "number" },
+							y2: { type: "number" },
+						},
+					},
+				},
+				{
+					name: "rect",
+					description: "Draw rectangle outline at (x,y) with width and height.",
+					inputSchema: {
+						type: "object",
+						required: ["x", "y", "width", "height"],
+						properties: {
+							x: { type: "number" },
+							y: { type: "number" },
+							width: { type: "number" },
+							height: { type: "number" },
+						},
+					},
+				},
+				{
+					name: "fill_rect",
+					description: "Draw filled rectangle at (x,y) with width and height.",
+					inputSchema: {
+						type: "object",
+						required: ["x", "y", "width", "height"],
+						properties: {
+							x: { type: "number" },
+							y: { type: "number" },
+							width: { type: "number" },
+							height: { type: "number" },
+						},
+					},
+				},
+				{
+					name: "circle",
+					description: "Draw circle outline centered at (x,y) with radius.",
+					inputSchema: {
+						type: "object",
+						required: ["x", "y", "radius"],
+						properties: {
+							x: { type: "number" },
+							y: { type: "number" },
+							radius: { type: "number" },
+						},
+					},
+				},
+				{
+					name: "fill_circle",
+					description: "Draw filled circle centered at (x,y) with radius.",
+					inputSchema: {
+						type: "object",
+						required: ["x", "y", "radius"],
+						properties: {
+							x: { type: "number" },
+							y: { type: "number" },
+							radius: { type: "number" },
+						},
+					},
+				},
+				{
+					name: "text",
+					description: "Draw text at (x,y). Set font via style tool.",
+					inputSchema: {
+						type: "object",
+						required: ["text", "x", "y"],
+						properties: {
+							text: { type: "string" },
+							x: { type: "number" },
+							y: { type: "number" },
+						},
+					},
+				},
+				{
+					name: "path",
+					description: "Draw a polyline through points [{x,y},...].",
+					inputSchema: {
+						type: "object",
+						required: ["points"],
+						properties: {
+							points: {
 								type: "array",
 								items: {
-									type: "string",
+									type: "object",
+									properties: { x: { type: "number" }, y: { type: "number" } },
+									required: ["x", "y"],
 								},
-								description:
-									"Array of DSL commands to execute on the canvas. Each command uses comma-separated parameters with fixed parameter order:\n\n" +
-									"STYLE COMMANDS:\n" +
-									"• s(strokeColor,fillColor,lineWidth,fontSize,fontWeight,backgroundColor,borderColor,borderWidth)\n" +
-									"  - Example: s(#FF0000,#0000FF,2,16,bold,#FFFFFF,#000000,1)\n" +
-									"  - All parameters optional after strokeColor, use empty string to skip: s(#FF0000,,2)\n\n" +
-									"DRAWING COMMANDS:\n" +
-									"• l(x1,y1,x2,y2) - Draw line from (x1,y1) to (x2,y2)\n" +
-									"• r(x,y,width,height) - Draw rectangle outline at (x,y) with dimensions\n" +
-									"• fr(x,y,width,height) - Draw filled rectangle at (x,y) with dimensions\n" +
-									"• c(x,y,radius) - Draw circle outline centered at (x,y) with radius\n" +
-									"• fc(x,y,radius) - Draw filled circle centered at (x,y) with radius\n" +
-									"• t(text,x,y) - Draw text at position (x,y)\n" +
-									"• p(x1,y1,x2,y2,x3,y3,...) - Draw path connecting multiple points (even number of coordinates)\n\n" +
-									"UTILITY COMMANDS:\n" +
-									"• clear() - Clear the entire canvas\n" +
-									"• action(x,y,width,height,eventName) - Create clickable area for interactivity\n\n" +
-									"EXAMPLES:\n" +
-									'["clear()", "s(#FF0000,#0000FF,2,20,bold,#FFFFFF,#000000,1)", "t(Hello World,50,50)", "fr(50,80,200,100)"]',
+								minItems: 2,
 							},
 						},
+					},
+				},
+				{
+					name: "action",
+					description: "Create clickable area that emits eventName.",
+					inputSchema: {
+						type: "object",
+						required: ["x", "y", "width", "height", "eventName"],
+						properties: {
+							x: { type: "number" },
+							y: { type: "number" },
+							width: { type: "number" },
+							height: { type: "number" },
+							eventName: { type: "string" },
+						},
+					},
+				},
+				{
+					name: "clear",
+					description: "Clear the entire canvas.",
+					inputSchema: { type: "object", properties: {} },
+				},
+				{
+					name: "draw_canvas",
+					description:
+						"Batch draw using raw DSL commands. Prefer atomic tools for step-by-step drawing.",
+					inputSchema: {
+						type: "object",
+						properties: { commands: { type: "array", items: { type: "string" } } },
 						required: ["commands"],
-						additionalProperties: false,
 					},
 				},
 			],
@@ -623,6 +760,48 @@ async function initializeMCPServer() {
 			const { name, arguments: args } = request.params;
 
 			switch (name) {
+				case "style":
+					return await handleSingleCommand(makeStyleCommand(args));
+				case "line": {
+					const parsed = LineArgsSchema.parse(args);
+					const cmd = `l(${parsed.x1},${parsed.y1},${parsed.x2},${parsed.y2})`;
+					return await handleSingleCommand(cmd);
+				}
+				case "rect": {
+					const p = RectArgsSchema.parse(args);
+					return await handleSingleCommand(`r(${p.x},${p.y},${p.width},${p.height})`);
+				}
+				case "fill_rect": {
+					const p = RectArgsSchema.parse(args);
+					return await handleSingleCommand(`fr(${p.x},${p.y},${p.width},${p.height})`);
+				}
+				case "circle": {
+					const p = CircleArgsSchema.parse(args);
+					return await handleSingleCommand(`c(${p.x},${p.y},${p.radius})`);
+				}
+				case "fill_circle": {
+					const p = CircleArgsSchema.parse(args);
+					return await handleSingleCommand(`fc(${p.x},${p.y},${p.radius})`);
+				}
+				case "text": {
+					const p = TextArgsSchema.parse(args);
+					// Note: text comes first in DSL
+					const escaped = p.text.replace(/\)/g, "]");
+					return await handleSingleCommand(`t(${escaped},${p.x},${p.y})`);
+				}
+				case "path": {
+					const p = PathArgsSchema.parse(args);
+					const flat = p.points.map((pt) => `${pt.x},${pt.y}`).join(",");
+					return await handleSingleCommand(`p(${flat})`);
+				}
+				case "action": {
+					const p = ActionArgsSchema.parse(args);
+					return await handleSingleCommand(
+						`action(${p.x},${p.y},${p.width},${p.height},${p.eventName})`,
+					);
+				}
+				case "clear":
+					return await handleSingleCommand("clear()");
 				case "draw_canvas":
 					return await handleDrawCanvas(args);
 				default:
@@ -639,6 +818,62 @@ async function initializeMCPServer() {
 			};
 		}
 	});
+
+	// Helper to build style command using key:value pairs for flexibility
+	function makeStyleCommand(args: unknown): string {
+		const p = StyleArgsSchema.parse(args);
+		const parts: string[] = [];
+		if (p.strokeColor) parts.push(`sc:${p.strokeColor}`);
+		if (p.fillColor) parts.push(`fc:${p.fillColor}`);
+		if (typeof p.lineWidth === "number") parts.push(`lw:${p.lineWidth}`);
+		if (typeof p.fontSize === "number") parts.push(`fs:${p.fontSize}`);
+		if (p.fontWeight) parts.push(`fw:${p.fontWeight}`);
+		if (p.backgroundColor) parts.push(`bg:${p.backgroundColor}`);
+		if (p.borderColor) parts.push(`bc:${p.borderColor}`);
+		if (typeof p.borderWidth === "number") parts.push(`bo:${p.borderWidth}`);
+		if (parts.length === 0) {
+			throw new Error("style requires at least one property");
+		}
+		return `s(${parts.join(",")})`;
+	}
+
+	// Helper to handle any single DSL command string
+	async function handleSingleCommand(command: string) {
+		const validation = validateDSLCommands([command]);
+		if (!validation.isValid) {
+			return {
+				content: [
+					{ type: "text", text: `❌ DSL Validation Error: ${validation.errors.join("\n")}` },
+				],
+				isError: true,
+			};
+		}
+
+		const commandId = commandManager.addCommand(
+			command,
+			mcpTransport.sessionId,
+		);
+		const clientStats = commandManager.getConnectedClientsCount();
+		const stats = commandManager.getCommandStats();
+
+		const statusMessage =
+			clientStats.websocket > 0
+				? `📡 Command broadcast to ${clientStats.websocket} client(s)`
+				: `📦 Command cached - will send when a client connects`;
+
+		return {
+			content: [
+				{
+					type: "text",
+					text:
+						`✅ Executed: ${command}\n` +
+						`${statusMessage}\n` +
+						`- Command ID: ${commandId}\n` +
+						`- Pending/Executed/Total: ${stats.pending}/${stats.executed}/${stats.total}`,
+				},
+			],
+		};
+	}
 
 	// Helper function to handle draw_canvas tool
 	async function handleDrawCanvas(args: unknown) {
